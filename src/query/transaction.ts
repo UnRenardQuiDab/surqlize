@@ -9,18 +9,21 @@ import { type AnyTable, type MappedTables, Orm } from "../schema/orm.ts";
  * update, upsert, delete, relate) but routes all queries through the
  * transaction. Call `commit()` to apply changes or `cancel()` to discard them.
  */
-export class Transaction<T extends AnyTable[] = AnyTable[]> extends Orm<T> {
+export class Transaction<
+	T extends readonly AnyTable[] = readonly AnyTable[],
+> extends Orm<T> {
 	private _transaction: SurrealTransaction;
 
 	constructor(
 		transaction: SurrealTransaction,
 		tables: MappedTables<T>,
 		lookup: CreateSchemaLookup<T>,
+		hasModels = false,
 	) {
 		// Cast SurrealTransaction as SurrealSession — safe because the only method
 		// Query.execute() calls on it is .query(), which both SurrealSession and
 		// SurrealTransaction inherit from SurrealQueryable.
-		super(transaction as unknown as SurrealSession, tables, lookup);
+		super(transaction as unknown as SurrealSession, tables, lookup, hasModels);
 		this._transaction = transaction;
 	}
 

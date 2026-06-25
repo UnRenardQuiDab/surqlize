@@ -41,15 +41,23 @@ import type { ApiEndpointSchema } from "./api";
 import { EdgeSchema } from "./edge";
 import type { FunctionCallable, InferParams } from "./function";
 import { type CreateSchemaLookup, createLookupFromSchemas } from "./lookup";
+import { attachToOrm, type SchemaResult } from "./model";
 import { TableSchema } from "./table";
 
 /** Union type representing any table or edge schema. */
+type AnyTableSchema<Tb extends string = string> = {
+	readonly tb: Tb;
+	readonly schema: ObjectType;
+	readonly type: unknown;
+	readonly model?: unknown;
+};
+
 export type AnyTable<Tb extends string = string> =
-	| TableSchema<Tb>
+	| AnyTableSchema<Tb>
 	| EdgeSchema<string, Tb>;
 
 /** Maps an array of table/edge schemas to a record keyed by table name. */
-export type MappedTables<T extends AnyTable[]> = {
+export type MappedTables<T extends readonly AnyTable[]> = {
 	[K in T[number]["tb"]]: Extract<T[number], AnyTable<K>>;
 } & {};
 
@@ -84,7 +92,61 @@ type UnionToTuple<U> = [U] extends [never]
 
 /** The schemas held by a {@link SchemaMap}, as a tuple used as the `Orm` type argument. */
 export type SchemaMapTables<S extends SchemaMap> =
-	UnionToTuple<S[keyof S]> extends infer R extends AnyTable[] ? R : never;
+	UnionToTuple<S[keyof S]> extends infer R extends readonly AnyTable[]
+		? R
+		: never;
+
+type TableSchemaType<
+	O extends Orm,
+	Tb extends keyof O["tables"] & string,
+> = O["tables"][Tb]["schema"];
+
+type TableRowType<
+	O extends Orm,
+	Tb extends keyof O["tables"] & string,
+> = SchemaResult<O["tables"][Tb]>;
+
+type TableSelectQuery<
+	O extends Orm,
+	C extends WorkableContext<O>,
+	Tb extends keyof O["tables"] & string,
+> = SelectQuery<O, C, Tb, TableSchemaType<O, Tb>, TableRowType<O, Tb>>;
+
+type TableLiveQuery<
+	O extends Orm,
+	C extends WorkableContext<O>,
+	Tb extends keyof O["tables"] & string,
+> = LiveQuery<O, C, Tb, TableSchemaType<O, Tb>, TableRowType<O, Tb>>;
+
+type TableCreateQuery<
+	O extends Orm,
+	C extends WorkableContext<O>,
+	Tb extends keyof O["tables"] & string,
+> = CreateQuery<O, C, Tb, TableSchemaType<O, Tb>, TableRowType<O, Tb>>;
+
+type TableInsertQuery<
+	O extends Orm,
+	C extends WorkableContext<O>,
+	Tb extends keyof O["tables"] & string,
+> = InsertQuery<O, C, Tb, TableSchemaType<O, Tb>, TableRowType<O, Tb>>;
+
+type TableUpdateQuery<
+	O extends Orm,
+	C extends WorkableContext<O>,
+	Tb extends keyof O["tables"] & string,
+> = UpdateQuery<O, C, Tb, TableSchemaType<O, Tb>, TableRowType<O, Tb>>;
+
+type TableDeleteQuery<
+	O extends Orm,
+	C extends WorkableContext<O>,
+	Tb extends keyof O["tables"] & string,
+> = DeleteQuery<O, C, Tb, TableSchemaType<O, Tb>, TableRowType<O, Tb>>;
+
+type TableUpsertQuery<
+	O extends Orm,
+	C extends WorkableContext<O>,
+	Tb extends keyof O["tables"] & string,
+> = UpsertQuery<O, C, Tb, TableSchemaType<O, Tb>, TableRowType<O, Tb>>;
 
 type ValueTupleTypes<V extends readonly unknown[]> = {
 	-readonly [K in keyof V]: ValueType<V[K]>;
@@ -168,11 +230,12 @@ function typeFromValue(value: unknown): AbstractType {
  * Use the {@link orm} factory function to create instances rather than
  * calling the constructor directly.
  */
-export class Orm<T extends AnyTable[] = AnyTable[]> {
+export class Orm<T extends readonly AnyTable[] = readonly AnyTable[]> {
 	constructor(
 		public readonly surreal: SurrealSession,
 		public readonly tables: MappedTables<T>,
 		public readonly lookup: CreateSchemaLookup<T>,
+		public readonly hasModels = false,
 	) {}
 
 	/**
@@ -194,6 +257,10 @@ export class Orm<T extends AnyTable[] = AnyTable[]> {
 		);
 	}
 
+	attach<V>(value: V): V {
+		return attachToOrm(this, value);
+	}
+
 	/**
 	 * Build a SELECT query for a table, record ID, or workable record reference.
 	 *
@@ -203,7 +270,9 @@ export class Orm<T extends AnyTable[] = AnyTable[]> {
 	select<
 		C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(tb: Tb): SelectQuery<this, C, Tb>;
+	>(
+		tb: Tb,
+	): TableSelectQuery<this, C, Tb>;
 
 	// Multiple tables — a heterogeneous select whose rows are the merged schema
 	// of every named table (`SELECT … FROM user, company`).
@@ -216,20 +285,29 @@ export class Orm<T extends AnyTable[] = AnyTable[]> {
 	select<
 		C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(rid: RecordId<Tb>): SelectQuery<this, C, Tb>;
+	>(
+		rid: RecordId<Tb>,
+	): TableSelectQuery<this, C, Tb>;
 	select<
 		C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(rid: Workable<C, RecordType<Tb>>): SelectQuery<this, C, Tb>;
+	>(
+		rid: Workable<C, RecordType<Tb>>,
+	): TableSelectQuery<this, C, Tb>;
 	// Graph-traversal step (e.g. `user.out("authored")`)
 	select<
 		C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(step: Workable<C, GraphType<Tb>>): SelectQuery<this, C, Tb>;
+	>(
+		step: Workable<C, GraphType<Tb>>,
+	): TableSelectQuery<this, C, Tb>;
 	select<
 		C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(tb: Tb, id: RecordIdValue): SelectQuery<this, C, Tb>;
+	>(
+		tb: Tb,
+		id: RecordIdValue,
+	): TableSelectQuery<this, C, Tb>;
 
 	// Method
 	select<
@@ -242,13 +320,24 @@ export class Orm<T extends AnyTable[] = AnyTable[]> {
 			| RecordId<Tb>
 			| Workable<C, RecordType<Tb> | GraphType<Tb>>,
 		id?: RecordIdValue,
-	) {
-		if (tb instanceof RecordId) return new SelectQuery(this, tb);
-		if (Array.isArray(tb)) return new SelectQuery(this, tb as readonly Tb[]);
+	): TableSelectQuery<this, C, Tb> | SelectQuery<this, C, Tb> {
+		if (tb instanceof RecordId) return new SelectQuery(this, tb) as TableSelectQuery<this, C, Tb>;
+		if (Array.isArray(tb))
+			return new SelectQuery(
+				this,
+				tb as readonly Tb[],
+			) as SelectQuery<this, C, Tb>;
 		if (isWorkable(tb))
-			return new SelectQuery(this, tb as Workable<C, RecordType<Tb>>);
-		if (id === undefined) return new SelectQuery(this, tb as Tb);
-		return new SelectQuery(this, new RecordId(tb as Tb, id));
+			return new SelectQuery(
+				this,
+				tb as Workable<C, RecordType<Tb> | GraphType<Tb>>,
+			) as TableSelectQuery<this, C, Tb>;
+		if (id === undefined)
+			return new SelectQuery(this, tb as Tb) as TableSelectQuery<this, C, Tb>;
+		return new SelectQuery(
+			this,
+			new RecordId(tb as Tb, id),
+		) as TableSelectQuery<this, C, Tb>;
 	}
 
 	/**
@@ -265,32 +354,51 @@ export class Orm<T extends AnyTable[] = AnyTable[]> {
 	live<
 		C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(tb: Tb): LiveQuery<this, C, Tb>;
+	>(
+		tb: Tb,
+	): TableLiveQuery<this, C, Tb>;
 
 	// RecordId
 	live<
 		C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(rid: RecordId<Tb>): LiveQuery<this, C, Tb>;
+	>(
+		rid: RecordId<Tb>,
+	): TableLiveQuery<this, C, Tb>;
 	live<
 		C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(rid: Workable<C, RecordType<Tb>>): LiveQuery<this, C, Tb>;
+	>(
+		rid: Workable<C, RecordType<Tb>>,
+	): TableLiveQuery<this, C, Tb>;
 	live<
 		C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(tb: Tb, id: RecordIdValue): LiveQuery<this, C, Tb>;
+	>(
+		tb: Tb,
+		id: RecordIdValue,
+	): TableLiveQuery<this, C, Tb>;
 
 	// Method
 	live<
 		C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(tb: Tb | RecordId<Tb> | Workable<C, RecordType<Tb>>, id?: RecordIdValue) {
-		if (tb instanceof RecordId) return new LiveQuery(this, tb);
+	>(
+		tb: Tb | RecordId<Tb> | Workable<C, RecordType<Tb>>,
+		id?: RecordIdValue,
+	): TableLiveQuery<this, C, Tb> {
+		if (tb instanceof RecordId) return new LiveQuery(this, tb) as TableLiveQuery<this, C, Tb>;
 		if (isWorkable(tb))
-			return new LiveQuery(this, tb as Workable<C, RecordType<Tb>>);
-		if (id === undefined) return new LiveQuery(this, tb as Tb);
-		return new LiveQuery(this, new RecordId(tb as Tb, id));
+			return new LiveQuery(
+				this,
+				tb as Workable<C, RecordType<Tb>>,
+			) as TableLiveQuery<this, C, Tb>;
+		if (id === undefined)
+			return new LiveQuery(this, tb as Tb) as TableLiveQuery<this, C, Tb>;
+		return new LiveQuery(
+			this,
+			new RecordId(tb as Tb, id),
+		) as TableLiveQuery<this, C, Tb>;
 	}
 
 	/**
@@ -303,20 +411,25 @@ export class Orm<T extends AnyTable[] = AnyTable[]> {
 	create<
 		C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(tb: Tb): CreateQuery<this, C, Tb>;
+	>(
+		tb: Tb,
+	): TableCreateQuery<this, C, Tb>;
 
 	// CREATE - with explicit ID
 	create<
 		C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(tb: Tb, id: RecordIdValue): CreateQuery<this, C, Tb>;
+	>(
+		tb: Tb,
+		id: RecordIdValue,
+	): TableCreateQuery<this, C, Tb>;
 
 	// Method
 	create<
 		_C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(tb: Tb, id?: RecordIdValue) {
-		return new CreateQuery(this, tb, id);
+	>(tb: Tb, id?: RecordIdValue): TableCreateQuery<this, _C, Tb> {
+		return new CreateQuery(this, tb, id) as TableCreateQuery<this, _C, Tb>;
 	}
 
 	/**
@@ -329,20 +442,25 @@ export class Orm<T extends AnyTable[] = AnyTable[]> {
 	insert<
 		C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(tb: Tb, data: unknown | unknown[]): InsertQuery<this, C, Tb>;
+	>(
+		tb: Tb,
+		data: unknown | unknown[],
+	): TableInsertQuery<this, C, Tb>;
 
 	// INSERT without data (for VALUES syntax)
 	insert<
 		C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(tb: Tb): InsertQuery<this, C, Tb>;
+	>(
+		tb: Tb,
+	): TableInsertQuery<this, C, Tb>;
 
 	// Method
 	insert<
 		_C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(tb: Tb, data?: unknown | unknown[]) {
-		return new InsertQuery(this, tb, data);
+	>(tb: Tb, data?: unknown | unknown[]): TableInsertQuery<this, _C, Tb> {
+		return new InsertQuery(this, tb, data) as TableInsertQuery<this, _C, Tb>;
 	}
 
 	/**
@@ -354,32 +472,52 @@ export class Orm<T extends AnyTable[] = AnyTable[]> {
 	update<
 		C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(tb: Tb): UpdateQuery<this, C, Tb>;
+	>(
+		tb: Tb,
+	): TableUpdateQuery<this, C, Tb>;
 
 	// UPDATE - record ID
 	update<
 		C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(rid: RecordId<Tb>): UpdateQuery<this, C, Tb>;
+	>(
+		rid: RecordId<Tb>,
+	): TableUpdateQuery<this, C, Tb>;
 	update<
 		C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(rid: Workable<C, RecordType<Tb>>): UpdateQuery<this, C, Tb>;
+	>(
+		rid: Workable<C, RecordType<Tb>>,
+	): TableUpdateQuery<this, C, Tb>;
 	update<
 		C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(tb: Tb, id: RecordIdValue): UpdateQuery<this, C, Tb>;
+	>(
+		tb: Tb,
+		id: RecordIdValue,
+	): TableUpdateQuery<this, C, Tb>;
 
 	// Method
 	update<
 		C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(tb: Tb | RecordId<Tb> | Workable<C, RecordType<Tb>>, id?: RecordIdValue) {
-		if (tb instanceof RecordId) return new UpdateQuery(this, tb);
+	>(
+		tb: Tb | RecordId<Tb> | Workable<C, RecordType<Tb>>,
+		id?: RecordIdValue,
+	): TableUpdateQuery<this, C, Tb> {
+		if (tb instanceof RecordId)
+			return new UpdateQuery(this, tb) as TableUpdateQuery<this, C, Tb>;
 		if (isWorkable(tb))
-			return new UpdateQuery(this, tb as Workable<C, RecordType<Tb>>);
-		if (id === undefined) return new UpdateQuery(this, tb as Tb);
-		return new UpdateQuery(this, new RecordId(tb as Tb, id));
+			return new UpdateQuery(
+				this,
+				tb as Workable<C, RecordType<Tb>>,
+			) as TableUpdateQuery<this, C, Tb>;
+		if (id === undefined)
+			return new UpdateQuery(this, tb as Tb) as TableUpdateQuery<this, C, Tb>;
+		return new UpdateQuery(
+			this,
+			new RecordId(tb as Tb, id),
+		) as TableUpdateQuery<this, C, Tb>;
 	}
 
 	/**
@@ -391,32 +529,52 @@ export class Orm<T extends AnyTable[] = AnyTable[]> {
 	delete<
 		C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(tb: Tb): DeleteQuery<this, C, Tb>;
+	>(
+		tb: Tb,
+	): TableDeleteQuery<this, C, Tb>;
 
 	// DELETE - record ID
 	delete<
 		C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(rid: RecordId<Tb>): DeleteQuery<this, C, Tb>;
+	>(
+		rid: RecordId<Tb>,
+	): TableDeleteQuery<this, C, Tb>;
 	delete<
 		C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(rid: Workable<C, RecordType<Tb>>): DeleteQuery<this, C, Tb>;
+	>(
+		rid: Workable<C, RecordType<Tb>>,
+	): TableDeleteQuery<this, C, Tb>;
 	delete<
 		C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(tb: Tb, id: RecordIdValue): DeleteQuery<this, C, Tb>;
+	>(
+		tb: Tb,
+		id: RecordIdValue,
+	): TableDeleteQuery<this, C, Tb>;
 
 	// Method
 	delete<
 		C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(tb: Tb | RecordId<Tb> | Workable<C, RecordType<Tb>>, id?: RecordIdValue) {
-		if (tb instanceof RecordId) return new DeleteQuery(this, tb);
+	>(
+		tb: Tb | RecordId<Tb> | Workable<C, RecordType<Tb>>,
+		id?: RecordIdValue,
+	): TableDeleteQuery<this, C, Tb> {
+		if (tb instanceof RecordId)
+			return new DeleteQuery(this, tb) as TableDeleteQuery<this, C, Tb>;
 		if (isWorkable(tb))
-			return new DeleteQuery(this, tb as Workable<C, RecordType<Tb>>);
-		if (id === undefined) return new DeleteQuery(this, tb as Tb);
-		return new DeleteQuery(this, new RecordId(tb as Tb, id));
+			return new DeleteQuery(
+				this,
+				tb as Workable<C, RecordType<Tb>>,
+			) as TableDeleteQuery<this, C, Tb>;
+		if (id === undefined)
+			return new DeleteQuery(this, tb as Tb) as TableDeleteQuery<this, C, Tb>;
+		return new DeleteQuery(
+			this,
+			new RecordId(tb as Tb, id),
+		) as TableDeleteQuery<this, C, Tb>;
 	}
 
 	/**
@@ -428,32 +586,52 @@ export class Orm<T extends AnyTable[] = AnyTable[]> {
 	upsert<
 		C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(tb: Tb): UpsertQuery<this, C, Tb>;
+	>(
+		tb: Tb,
+	): TableUpsertQuery<this, C, Tb>;
 
 	// UPSERT - record ID
 	upsert<
 		C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(rid: RecordId<Tb>): UpsertQuery<this, C, Tb>;
+	>(
+		rid: RecordId<Tb>,
+	): TableUpsertQuery<this, C, Tb>;
 	upsert<
 		C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(rid: Workable<C, RecordType<Tb>>): UpsertQuery<this, C, Tb>;
+	>(
+		rid: Workable<C, RecordType<Tb>>,
+	): TableUpsertQuery<this, C, Tb>;
 	upsert<
 		C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(tb: Tb, id: RecordIdValue): UpsertQuery<this, C, Tb>;
+	>(
+		tb: Tb,
+		id: RecordIdValue,
+	): TableUpsertQuery<this, C, Tb>;
 
 	// Method
 	upsert<
 		C extends WorkableContext<this>,
 		Tb extends keyof this["tables"] & string,
-	>(tb: Tb | RecordId<Tb> | Workable<C, RecordType<Tb>>, id?: RecordIdValue) {
-		if (tb instanceof RecordId) return new UpsertQuery(this, tb);
+	>(
+		tb: Tb | RecordId<Tb> | Workable<C, RecordType<Tb>>,
+		id?: RecordIdValue,
+	): TableUpsertQuery<this, C, Tb> {
+		if (tb instanceof RecordId)
+			return new UpsertQuery(this, tb) as TableUpsertQuery<this, C, Tb>;
 		if (isWorkable(tb))
-			return new UpsertQuery(this, tb as Workable<C, RecordType<Tb>>);
-		if (id === undefined) return new UpsertQuery(this, tb as Tb);
-		return new UpsertQuery(this, new RecordId(tb as Tb, id));
+			return new UpsertQuery(
+				this,
+				tb as Workable<C, RecordType<Tb>>,
+			) as TableUpsertQuery<this, C, Tb>;
+		if (id === undefined)
+			return new UpsertQuery(this, tb as Tb) as TableUpsertQuery<this, C, Tb>;
+		return new UpsertQuery(
+			this,
+			new RecordId(tb as Tb, id),
+		) as TableUpsertQuery<this, C, Tb>;
 	}
 
 	/**
@@ -598,7 +776,7 @@ export class Orm<T extends AnyTable[] = AnyTable[]> {
 		// (Transaction extends Orm)
 		const { Transaction: Tx } = await import("../query/transaction");
 		const surrealTx = await this.surreal.beginTransaction();
-		const tx = new Tx<T>(surrealTx, this.tables, this.lookup);
+		const tx = new Tx<T>(surrealTx, this.tables, this.lookup, this.hasModels);
 
 		if (!cb) return tx;
 
@@ -625,6 +803,10 @@ function isSchemaMap(value: unknown): value is SchemaMap {
 		!(value instanceof TableSchema) &&
 		!(value instanceof EdgeSchema)
 	);
+}
+
+function schemaHasModel(table: AnyTable): boolean {
+	return table instanceof TableSchema && typeof table.model === "function";
 }
 
 /**
@@ -657,7 +839,7 @@ function isSchemaMap(value: unknown): value is SchemaMap {
  * const users = await db.select("user");
  * ```
  */
-export function orm<T extends AnyTable[]>(
+export function orm<T extends readonly AnyTable[]>(
 	surreal: SurrealSession,
 	...tables: T
 ): Orm<T>;
@@ -667,12 +849,12 @@ export function orm<S extends SchemaMap>(
 ): Orm<SchemaMapTables<S>>;
 export function orm(
 	surreal: SurrealSession,
-	...args: AnyTable[] | [SchemaMap]
+	...args: readonly AnyTable[] | [SchemaMap]
 ): Orm {
-	const tables: AnyTable[] =
+	const tables: readonly AnyTable[] =
 		args.length === 1 && isSchemaMap(args[0])
 			? Object.values(args[0])
-			: (args as AnyTable[]);
+			: (args as readonly AnyTable[]);
 
 	const mapped = tables.reduce<Record<string, AnyTable>>((acc, table) => {
 		acc[table.tb] = table;
@@ -680,6 +862,12 @@ export function orm(
 	}, {});
 
 	const lookup = createLookupFromSchemas(tables);
+	const hasModels = tables.some(schemaHasModel);
 
-	return new Orm(surreal, mapped as MappedTables<AnyTable[]>, lookup);
+	return new Orm(
+		surreal,
+		mapped as MappedTables<readonly AnyTable[]>,
+		lookup,
+		hasModels,
+	);
 }

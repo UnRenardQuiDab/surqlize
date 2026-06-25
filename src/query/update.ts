@@ -1,5 +1,6 @@
 import { type RecordId, Table } from "surrealdb";
 import type { Orm } from "../schema/orm.ts";
+import type { HydratedQueryValue } from "../schema/model.ts";
 import {
 	type AbstractType,
 	type ArrayType,
@@ -48,8 +49,9 @@ export class UpdateQuery<
 		C extends WorkableContext<O>,
 		T extends keyof O["tables"] & string,
 		E extends AbstractType = O["tables"][T]["schema"],
+		V = HydratedQueryValue<O, E>,
 	>
-	extends Query<C, ArrayType<E>>
+	extends Query<C, ArrayType<E>, V[]>
 	implements ModificationState
 {
 	readonly [__ctx]: C;
@@ -140,8 +142,12 @@ export class UpdateQuery<
 	return(mode: "none" | "before" | "after" | "diff"): this;
 	return<
 		P extends Inheritable<C>,
-		R extends InheritableIntoType<C, P> = InheritableIntoType<C, P>,
-	>(cb: (tb: Actionable<C, E>) => P): UpdateQuery<O, C, T, R>;
+	>(cb: (tb: Actionable<C, E>) => P): UpdateQuery<
+		O,
+		C,
+		T,
+		InheritableIntoType<C, ReturnType<typeof cb>>
+	>;
 	return(
 		value:
 			| "none"

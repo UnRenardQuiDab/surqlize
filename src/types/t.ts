@@ -104,9 +104,11 @@ export function record<const T extends string | undefined = undefined>(
 	return new RecordType<T>(table as T | readonly T[]);
 }
 
-/** Extract the inferred TypeScript type from a type definition or workable. */
-type InferType<T extends AbstractType | Workable> =
-	T extends Workable<WorkableContext, infer T>
+/** Extract the inferred public TypeScript type from a schema, query, or workable. */
+type InferType<T extends AbstractType | Workable | { type: unknown }> =
+	T extends { type: infer R }
+		? R
+		: T extends Workable<WorkableContext, infer T>
 		? T["infer"]
 		: T extends AbstractType
 			? T["infer"]

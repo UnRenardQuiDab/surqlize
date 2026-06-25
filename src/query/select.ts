@@ -1,5 +1,6 @@
 import { type RecordId, Table } from "surrealdb";
 import type { Orm } from "../schema/orm.ts";
+import type { HydratedQueryValue } from "../schema/model.ts";
 import type { RowTraversal } from "../schema/traversal.ts";
 import {
 	type AbstractType,
@@ -151,7 +152,8 @@ export class SelectQuery<
 	C extends WorkableContext<O>,
 	T extends keyof O["tables"] & string,
 	E extends AbstractType = O["tables"][T]["schema"],
-> extends Query<C, ArrayType<E>> {
+	V = HydratedQueryValue<O, E>,
+> extends Query<C, ArrayType<E>, V[]> {
 	readonly [__ctx]: C;
 	private _start?: number;
 	private _limit?: number;
@@ -250,7 +252,7 @@ export class SelectQuery<
 				RowTraversal<C, T> &
 				RowExtend<C, ResolveEntry<E>>,
 		) => P,
-	): SelectQuery<O, C, T, R> {
+	): SelectQuery<O, C, T, R, HydratedQueryValue<O, R>> {
 		const tb = this.rowActionable(this.entry) as Actionable<
 			C,
 			ResolveEntry<E>
@@ -265,8 +267,9 @@ export class SelectQuery<
 		const entry = sanitizeWorkable(workable);
 
 		return this.derive((next) => {
-			(next as unknown as SelectQuery<O, C, T, R>)._entry = entry;
-		}) as unknown as SelectQuery<O, C, T, R>;
+			(next as unknown as SelectQuery<O, C, T, R, HydratedQueryValue<O, R>>)._entry =
+				entry;
+		}) as unknown as SelectQuery<O, C, T, R, HydratedQueryValue<O, R>>;
 	}
 
 	where(
@@ -381,7 +384,13 @@ export class SelectQuery<
 
 	fetch<P extends FetchPaths<O, T>>(
 		...fields: P[]
-	): SelectQuery<O, C, T, FetchedSchema<O, E, P>> {
+	): SelectQuery<
+		O,
+		C,
+		T,
+		FetchedSchema<O, E, P>,
+		HydratedQueryValue<O, FetchedSchema<O, E, P>>
+	> {
 		// Build a resolved schema where fetched record references are replaced
 		// with the referenced table's ObjectType schema, recursing into nested
 		// paths so parse() validates the resolved objects instead of expecting
@@ -397,7 +406,13 @@ export class SelectQuery<
 		return this.derive((next) => {
 			next._fetch = fields;
 			if (resolved) next._fetchResolvedType = resolved;
-		}) as unknown as SelectQuery<O, C, T, FetchedSchema<O, E, P>>;
+		}) as unknown as SelectQuery<
+			O,
+			C,
+			T,
+			FetchedSchema<O, E, P>,
+			HydratedQueryValue<O, FetchedSchema<O, E, P>>
+		>;
 	}
 
 	timeout(duration: string): this {

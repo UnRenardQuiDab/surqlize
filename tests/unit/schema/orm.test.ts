@@ -103,3 +103,30 @@ describe("orm() object form keeps full type support", () => {
 		expect(sample[0]?.name).toBe("Alice");
 	});
 });
+
+describe("orm() model awareness", () => {
+	test("hasModels stays false for normal tables", () => {
+		const db = orm(new Surreal(), user, post);
+
+		expect(db.hasModels).toBe(false);
+	});
+
+	test("hasModels becomes true when a table is registered with a model", () => {
+		class User extends user.Model {}
+		const modeledUser = user.withModel(User);
+		const db = orm(new Surreal(), { user: modeledUser, post });
+
+		expect(db.hasModels).toBe(true);
+	});
+
+	test("hasModels becomes true for table(..., fields, Model) registration", () => {
+		const baseAccount = table("account", { email: t.string() });
+
+		class Account extends baseAccount.Model {}
+
+		const account = table("account", { email: t.string() }, Account);
+		const db = orm(new Surreal(), account);
+
+		expect(db.hasModels).toBe(true);
+	});
+});

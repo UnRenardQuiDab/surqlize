@@ -1,5 +1,6 @@
 import { type RecordId, Table } from "surrealdb";
 import type { Orm } from "../schema/orm.ts";
+import type { HydratedQueryValue } from "../schema/model.ts";
 import {
 	type AbstractType,
 	type ArrayType,
@@ -33,7 +34,8 @@ export class DeleteQuery<
 	C extends WorkableContext<O>,
 	T extends keyof O["tables"] & string,
 	E extends AbstractType = O["tables"][T]["schema"],
-> extends Query<C, ArrayType<E>> {
+	V = HydratedQueryValue<O, E>,
+> extends Query<C, ArrayType<E>, V[]> {
 	readonly [__ctx]: C;
 	private _filter?: Workable<C>;
 	private _return?: "none" | "before" | "after" | "diff" | Workable<C, E>;
@@ -89,8 +91,12 @@ export class DeleteQuery<
 	return(mode: "none" | "before" | "after" | "diff"): this;
 	return<
 		P extends Inheritable<C>,
-		R extends InheritableIntoType<C, P> = InheritableIntoType<C, P>,
-	>(cb: (tb: Actionable<C, E>) => P): DeleteQuery<O, C, T, R>;
+	>(cb: (tb: Actionable<C, E>) => P): DeleteQuery<
+		O,
+		C,
+		T,
+		InheritableIntoType<C, ReturnType<typeof cb>>
+	>;
 	return(
 		value:
 			| "none"

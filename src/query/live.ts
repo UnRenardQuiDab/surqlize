@@ -6,6 +6,10 @@ import {
 	type Uuid,
 } from "surrealdb";
 import type { Orm } from "../schema/orm.ts";
+import {
+	type HydratedQueryValue,
+	hydrateValue,
+} from "../schema/model.ts";
 import { type AbstractType, ObjectType, type RecordType } from "../types";
 import { type Actionable, actionable } from "../utils/actionable.ts";
 import { type DisplayContext, displayContext } from "../utils/display.ts";
@@ -121,7 +125,7 @@ export class LiveQuery<
 	C extends WorkableContext<O>,
 	T extends keyof O["tables"] & string,
 	E extends AbstractType = O["tables"][T]["schema"],
-	V = E["infer"],
+	V = HydratedQueryValue<O, E>,
 > {
 	readonly [__ctx]: C;
 	private _filter?: Workable<C>;
@@ -182,7 +186,9 @@ export class LiveQuery<
 	return<
 		P extends Inheritable<C>,
 		R extends InheritableIntoType<C, P> = InheritableIntoType<C, P>,
-	>(cb: (tb: Actionable<C, E>) => P): LiveQuery<O, C, T, R, R["infer"]> {
+	>(
+		cb: (tb: Actionable<C, E>) => P,
+	): LiveQuery<O, C, T, R, HydratedQueryValue<O, R>> {
 		const tb = actionable({
 			[__ctx]: this[__ctx],
 			[__type]: this.entry,
@@ -198,8 +204,9 @@ export class LiveQuery<
 		const entry = sanitizeWorkable(workable);
 
 		return this.derive((next) => {
-			(next as unknown as LiveQuery<O, C, T, R, R["infer"]>)._entry = entry;
-		}) as unknown as LiveQuery<O, C, T, R, R["infer"]>;
+			(next as unknown as LiveQuery<O, C, T, R, HydratedQueryValue<O, R>>)._entry =
+				entry;
+		}) as unknown as LiveQuery<O, C, T, R, HydratedQueryValue<O, R>>;
 	}
 
 	where(
@@ -226,7 +233,7 @@ export class LiveQuery<
 		C,
 		T,
 		FetchedSchema<O, E, P>,
-		FetchedSchema<O, E, P>["infer"]
+		HydratedQueryValue<O, FetchedSchema<O, E, P>>
 	> {
 		// Reuse SelectQuery's resolved-schema logic so notification values are
 		// validated as the resolved records instead of expecting RecordIds.
@@ -245,7 +252,7 @@ export class LiveQuery<
 			C,
 			T,
 			FetchedSchema<O, E, P>,
-			FetchedSchema<O, E, P>["infer"]
+			HydratedQueryValue<O, FetchedSchema<O, E, P>>
 		>;
 	}
 
@@ -312,7 +319,8 @@ export class LiveQuery<
 			// DIFF yields JSON Patch arrays, and KILLED carries no record payload —
 			// pass those through unparsed.
 			if (diff || action === "KILLED") return raw as V;
-			return type.parse(raw) as V;
+			const parsed = type.parse(raw) as V;
+			return hydrateValue(this[__ctx].orm, parsed);
 		};
 
 		return new LiveSubscription<V>(inner, mapValue);

@@ -4,6 +4,11 @@ import {
 	type RecordType,
 	t,
 } from "../types";
+import type {
+	TableModelBase,
+	TableModelConstructor,
+	TableRecord,
+} from "./model";
 
 /** A record mapping field names (excluding `id`) to their type definitions. */
 export type TableFields = Record<Exclude<string, "id">, AbstractType>;
@@ -11,21 +16,6 @@ export type TableFields = Record<Exclude<string, "id">, AbstractType>;
 type GetSchemaType<Tb extends string, Fd extends TableFields> = ObjectType<
 	Fd & { id: RecordType<Tb> }
 >;
-
-type GetInferType<Tb extends string, Fd extends TableFields> = GetSchemaType<
-	Tb,
-	Fd
->["infer"];
-
-export type TableModelBase<
-	Tb extends string,
-	Fd extends TableFields,
-> = abstract new (...args: never[]) => GetInferType<Tb, Fd>;
-
-export type TableModelConstructor<
-	Tb extends string,
-	Fd extends TableFields,
-> = abstract new (...args: never[]) => GetInferType<Tb, Fd>;
 
 /**
  * Schema definition for a SurrealDB table. Automatically includes a typed `id`
@@ -38,11 +28,14 @@ export type TableModelConstructor<
 export class TableSchema<
 	Tb extends string = string,
 	Fd extends TableFields = TableFields,
+	Model extends TableModelConstructor<Tb, Fd> | undefined = undefined,
 > {
+	private _baseModel?: TableModelBase<Tb, Fd>;
+
 	constructor(
 		public readonly tb: Tb,
 		public readonly _fields: Fd,
-		public readonly model?: TableModelConstructor<Tb, Fd>,
+		public readonly model?: Model,
 	) {}
 
 	get fields(): Fd & { id: RecordType<Tb> } & {} {
@@ -52,30 +45,31 @@ export class TableSchema<
 		} as Fd & { id: RecordType<Tb> } & {};
 	}
 
-	type = undefined as unknown as GetInferType<Tb, Fd>;
+	type = undefined as unknown as TableRecord<Tb, Fd>;
 
 	get schema(): GetSchemaType<Tb, Fd> {
 		return t.object(this.fields);
 	}
 
 	get Model(): TableModelBase<Tb, Fd> {
-		abstract class BaseModel {}
-		return BaseModel as TableModelBase<Tb, Fd>;
+		this._baseModel ??= class BaseModel {} as unknown as TableModelBase<Tb, Fd>;
+		return this._baseModel;
 	}
 
-	withModel<Model extends TableModelConstructor<Tb, Fd>>(
-		model: Model,
-	): TableSchema<Tb, Fd> & { readonly model: Model } {
+	withModel<NextModel extends TableModelConstructor<Tb, Fd>>(
+		model: NextModel,
+	): TableSchema<Tb, Fd, NextModel> & { readonly model: NextModel } {
 		return new TableSchema(this.tb, this._fields, model) as TableSchema<
 			Tb,
-			Fd
+			Fd,
+			NextModel
 		> & {
-			readonly model: Model;
+			readonly model: NextModel;
 		};
 	}
 
 	/** Type-guard that checks whether a value matches this table's schema. */
-	validate(value: unknown): value is GetInferType<Tb, Fd> {
+	validate(value: unknown): value is TableRecord<Tb, Fd> {
 		return this.schema.validate(value);
 	}
 }
@@ -100,20 +94,27 @@ export class TableSchema<
 export function table<
 	Tb extends string,
 	Fd extends Record<Exclude<string, "id">, AbstractType>,
->(tb: Tb extends string ? Tb : never, fields: Fd): TableSchema<Tb, Fd>;
+>(
+	tb: Tb,
+	fields: Fd,
+): TableSchema<Tb, Fd>;
 export function table<
 	Tb extends string,
 	Fd extends Record<Exclude<string, "id">, AbstractType>,
 	Model extends TableModelConstructor<Tb, Fd>,
 >(
-	tb: Tb extends string ? Tb : never,
+	tb: Tb,
 	fields: Fd,
 	model: Model,
-): TableSchema<Tb, Fd> & { readonly model: Model };
+): TableSchema<Tb, Fd, Model> & { readonly model: Model };
 export function table<
 	Tb extends string,
 	Fd extends Record<Exclude<string, "id">, AbstractType>,
 	Model extends TableModelConstructor<Tb, Fd>,
->(tb: Tb extends string ? Tb : never, fields: Fd, model?: Model) {
-	return new TableSchema(tb, fields, model);
+>(tb: Tb, fields: Fd, model?: Model) {
+	return new TableSchema(tb, fields, model) as unknown as TableSchema<
+		Tb,
+		Fd,
+		Model
+	>;
 }

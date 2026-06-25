@@ -1,4 +1,5 @@
 import { BoundQuery } from "surrealdb";
+import { hydrateValue } from "../schema/model";
 import type { AbstractType } from "../types";
 import {
 	__ctx,
@@ -22,15 +23,21 @@ import { type Actionable, actionable } from "../utils/actionable";
 export abstract class Query<
 	C extends WorkableContext = WorkableContext,
 	T extends AbstractType = AbstractType,
+	R = T["infer"],
 > implements Workable<C, T>
 {
 	abstract [__ctx]: C;
 	abstract [__display](ctx: DisplayContext): string;
 	abstract [__type]: T;
 
-	type = undefined as unknown as T["infer"];
+	type = undefined as unknown as R;
+	then: Then<R> & ThenAccessors<R>;
 	/** When true, result parsing is skipped (used by RETURN DIFF). */
 	protected _skipParse = false;
+
+	constructor() {
+		this.then = this.createThen();
+	}
 	/** Type-guard that checks whether a value matches this query's result type. */
 	validate(value: unknown): value is T["infer"] {
 		return this[__type].validate(value);
@@ -46,14 +53,20 @@ export abstract class Query<
 	 * Most queries parse through the runtime schema, while a few modes such as
 	 * `RETURN DIFF` intentionally bypass parse.
 	 */
-	parseResult(value: unknown): T["infer"] {
-		if (this._skipParse) return value as T["infer"];
-		return this.parse(value);
+	parseResult(value: unknown): R {
+		if (this._skipParse) return value as R;
+		const parsed = this.parse(value);
+		return hydrateValue(this[__ctx].orm, parsed) as R;
 	}
 
 	/** Create a shallow clone of this query. */
 	clone(): this {
-		return Object.assign(Object.create(Object.getPrototypeOf(this)), this);
+		const next = Object.assign(
+			Object.create(Object.getPrototypeOf(this)),
+			this,
+		) as this;
+		next.then = next.createThen();
+		return next;
 	}
 
 	/**
@@ -91,11 +104,11 @@ export abstract class Query<
 			| ((reason: unknown) => TResult | PromiseLike<TResult>)
 			| null
 			| undefined,
-	): Promise<this["type"] | TResult> {
+	): Promise<R | TResult> {
 		return this.then(undefined, onRejected);
 	}
 
-	finally(onFinally?: (() => void) | null | undefined): Promise<this["type"]> {
+	finally(onFinally?: (() => void) | null | undefined): Promise<R> {
 		return this.then(
 			(value) => {
 				onFinally?.();
@@ -109,10 +122,10 @@ export abstract class Query<
 	}
 
 	// biome-ignore lint/suspicious/noThenProperty: entire point of the class
-	get then(): Then<this> & ThenAccessors<this> {
-		const fn = <TResult1 = this["type"], TResult2 = never>(
+	private createThen(): Then<R> & ThenAccessors<R> {
+		const fn = <TResult1 = R, TResult2 = never>(
 			onFulfilled?:
-				| ((value: this["type"]) => TResult1 | PromiseLike<TResult1>)
+				| ((value: R) => TResult1 | PromiseLike<TResult1>)
 				| undefined
 				| null,
 			onRejected?:
@@ -126,25 +139,23 @@ export abstract class Query<
 		// Convenience accessors that execute the query and index into the
 		// resolved result array client-side. All queries return arrays, so these
 		// extract a single record. See README "Accessing Single Records".
-		const val = (): Promise<ResultElement<this["type"]> | undefined> =>
+		const val = (): Promise<ResultElement<R> | undefined> =>
 			this.execute().then(
 				(result) =>
 					(Array.isArray(result) ? result.at(0) : result) as
-						| ResultElement<this["type"]>
+						| ResultElement<R>
 						| undefined,
 			);
 
-		const at = (
-			index: number,
-		): Promise<ResultElement<this["type"]> | undefined> =>
+		const at = (index: number): Promise<ResultElement<R> | undefined> =>
 			this.execute().then(
 				(result) =>
 					(Array.isArray(result) ? result.at(index) : undefined) as
-						| ResultElement<this["type"]>
+						| ResultElement<R>
 						| undefined,
 			);
 
-		return Object.assign(fn, { val, at }) as Then<this> & ThenAccessors<this>;
+		return Object.assign(fn, { val, at }) as Then<R> & ThenAccessors<R>;
 	}
 
 	wrap(): Actionable<C, T> {
@@ -189,19 +200,16 @@ export abstract class Query<
 	 * the SDK's raw result is **not** run through this query's {@link parseResult}
 	 * — the caller owns decoding.
 	 */
-	prepare(): BoundQuery<[this["type"]]> {
+	prepare(): BoundQuery<[R]> {
 		const ctx = displayContext();
 		const query = this[__display](ctx);
-		return new BoundQuery<[this["type"]]>(query, ctx.variables);
+		return new BoundQuery<[R]>(query, ctx.variables);
 	}
 }
 
-type Then<Q extends { type: unknown }> = <
-	TResult1 = Q["type"],
-	TResult2 = never,
->(
+type Then<R> = <TResult1 = R, TResult2 = never>(
 	onFulfilled?:
-		| ((value: Q["type"]) => TResult1 | PromiseLike<TResult1>)
+		| ((value: R) => TResult1 | PromiseLike<TResult1>)
 		| undefined
 		| null,
 	onRejected?:
@@ -217,12 +225,12 @@ type ResultElement<T> = T extends readonly (infer E)[] ? E : T;
  * Convenience accessors hung off {@link Query.then} for reaching into a query's
  * result array without first awaiting it into a variable.
  */
-type ThenAccessors<Q extends { type: unknown }> = {
+type ThenAccessors<R> = {
 	/** Execute the query and resolve to the first result, or `undefined`. */
-	val(): Promise<ResultElement<Q["type"]> | undefined>;
+	val(): Promise<ResultElement<R> | undefined>;
 	/**
 	 * Execute the query and resolve to the result at `index`, or `undefined`.
 	 * Negative indexes count from the end (e.g. `-1` is the last result).
 	 */
-	at(index: number): Promise<ResultElement<Q["type"]> | undefined>;
+	at(index: number): Promise<ResultElement<R> | undefined>;
 };

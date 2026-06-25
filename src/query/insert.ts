@@ -1,5 +1,6 @@
 import { escapeIdent, Table } from "surrealdb";
 import { OrmError } from "../error.ts";
+import type { HydratedQueryValue } from "../schema/model.ts";
 import type { Orm } from "../schema/orm.ts";
 import {
 	type AbstractType,
@@ -42,7 +43,8 @@ export class InsertQuery<
 	C extends WorkableContext<O>,
 	T extends keyof O["tables"] & string,
 	E extends AbstractType = O["tables"][T]["schema"],
-> extends Query<C, ArrayType<E>> {
+	V = HydratedQueryValue<O, E>,
+> extends Query<C, ArrayType<E>, V[]> {
 	readonly [__ctx]: C;
 	private _data?: unknown | unknown[];
 	private _fields?: string[];
@@ -164,8 +166,12 @@ export class InsertQuery<
 	return(mode: "none" | "before" | "after" | "diff"): this;
 	return<
 		P extends Inheritable<C>,
-		R extends InheritableIntoType<C, P> = InheritableIntoType<C, P>,
-	>(cb: (tb: Actionable<C, E>) => P): InsertQuery<O, C, T, R>;
+	>(cb: (tb: Actionable<C, E>) => P): InsertQuery<
+		O,
+		C,
+		T,
+		InheritableIntoType<C, ReturnType<typeof cb>>
+	>;
 	return(
 		value:
 			| "none"

@@ -1,5 +1,6 @@
 import { RecordId, type RecordIdValue, Table } from "surrealdb";
 import type { Orm } from "../schema/orm.ts";
+import type { HydratedQueryValue } from "../schema/model.ts";
 import {
 	type AbstractType,
 	type ArrayType,
@@ -44,8 +45,9 @@ export class CreateQuery<
 		C extends WorkableContext<O>,
 		T extends keyof O["tables"] & string,
 		E extends AbstractType = O["tables"][T]["schema"],
+		V = HydratedQueryValue<O, E>,
 	>
-	extends Query<C, ArrayType<E>>
+	extends Query<C, ArrayType<E>, V[]>
 	implements ModificationState
 {
 	readonly [__ctx]: C;

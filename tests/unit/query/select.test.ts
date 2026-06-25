@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { RecordId, Surreal, Table } from "surrealdb";
+import { RecordId, Surreal, type SurrealSession, Table } from "surrealdb";
 import {
 	__display,
 	and,
@@ -10,6 +10,12 @@ import {
 	t,
 	table,
 } from "../../../src";
+
+function mockSurrealQuery(result: unknown): SurrealSession {
+	return {
+		query: () => Promise.resolve([result]),
+	} as unknown as SurrealSession;
+}
 
 describe("SELECT queries", () => {
 	const user = table("user", {
@@ -217,6 +223,100 @@ describe("SELECT queries", () => {
 		expect(result).toContain("WHERE");
 		expect(result).toContain("LIMIT");
 		expect(result).toContain("TIMEOUT");
+	});
+});
+
+describe("SELECT execute hydration", () => {
+	test("hydrates modeled table results and keeps unmodeled tables plain", async () => {
+		const baseUser = table("user", {
+			given_name: t.string(),
+			family_name: t.string(),
+		});
+
+		class User extends baseUser.Model {
+			get fullName() {
+				return `${this.given_name} ${this.family_name}`;
+			}
+		}
+
+		const user = baseUser.withModel(User);
+		const post = table("post", {
+			title: t.string(),
+			author: t.record("user"),
+		});
+
+		const userDb = orm(
+			mockSurrealQuery([
+				{
+					id: new RecordId("user", "ada"),
+					given_name: "Ada",
+					family_name: "Lovelace",
+				},
+			]),
+			user,
+			post,
+		);
+		const postDb = orm(
+			mockSurrealQuery([
+				{
+					id: new RecordId("post", "notes"),
+					title: "Notes",
+					author: new RecordId("user", "ada"),
+				},
+			]),
+			user,
+			post,
+		);
+
+		const users = await userDb.select("user").execute();
+		const posts = await postDb.select("post").execute();
+		const hydratedUser = users[0] as (typeof users)[number] & InstanceType<typeof User>;
+
+		expect(hydratedUser instanceof User).toBe(true);
+		expect(hydratedUser.fullName).toBe("Ada Lovelace");
+		expect(Object.getPrototypeOf(posts[0]!)).toBe(Object.prototype);
+	});
+
+	test("hydrates fetched nested modeled records when the fetched object includes an id", async () => {
+		const baseUser = table("user", {
+			given_name: t.string(),
+			family_name: t.string(),
+		});
+
+		class User extends baseUser.Model {
+			get fullName() {
+				return `${this.given_name} ${this.family_name}`;
+			}
+		}
+
+		const user = baseUser.withModel(User);
+		const post = table("post", {
+			title: t.string(),
+			author: t.record("user"),
+		});
+		const db = orm(
+			mockSurrealQuery([
+				{
+					id: new RecordId("post", "notes"),
+					title: "Notes",
+					author: {
+						id: new RecordId("user", "ada"),
+						given_name: "Ada",
+						family_name: "Lovelace",
+					},
+				},
+			]),
+			user,
+			post,
+		);
+
+		const posts = await db.select("post").fetch("author").execute();
+		const author = posts[0]!.author as typeof posts[number]["author"] &
+			InstanceType<typeof User>;
+
+		expect(Object.getPrototypeOf(posts[0]!)).toBe(Object.prototype);
+		expect(author instanceof User).toBe(true);
+		expect(author.fullName).toBe("Ada Lovelace");
 	});
 });
 

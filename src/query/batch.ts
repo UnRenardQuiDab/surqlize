@@ -8,8 +8,8 @@ import type { Query } from "./abstract.ts";
  * Maps a tuple of Query types to a tuple of their inferred result types.
  */
 // biome-ignore lint/suspicious/noExplicitAny: required for generic constraint flexibility
-export type BatchResult<Q extends Query<any, any>[]> = {
-	[K in keyof Q]: Q[K] extends Query<infer _C, infer T> ? T["infer"] : never;
+export type BatchResult<Q extends Query<any, any, any>[]> = {
+	[K in keyof Q]: Q[K] extends Query<infer _C, infer _T, infer R> ? R : never;
 };
 
 /**
@@ -18,7 +18,7 @@ export type BatchResult<Q extends Query<any, any>[]> = {
  * them as a single atomic operation.
  */
 // biome-ignore lint/suspicious/noExplicitAny: required for generic constraint flexibility
-export class BatchQuery<Q extends Query<any, any>[]> {
+export class BatchQuery<Q extends Query<any, any, any>[]> {
 	constructor(
 		private readonly surreal: SurrealSession,
 		private readonly queries: Q,
