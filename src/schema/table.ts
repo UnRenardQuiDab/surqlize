@@ -17,6 +17,16 @@ type GetInferType<Tb extends string, Fd extends TableFields> = GetSchemaType<
 	Fd
 >["infer"];
 
+export type TableModelBase<
+	Tb extends string,
+	Fd extends TableFields,
+> = abstract new (...args: never[]) => GetInferType<Tb, Fd>;
+
+export type TableModelConstructor<
+	Tb extends string,
+	Fd extends TableFields,
+> = abstract new (...args: never[]) => GetInferType<Tb, Fd>;
+
 /**
  * Schema definition for a SurrealDB table. Automatically includes a typed `id`
  * field based on the table name. Use the {@link table} factory function to
@@ -32,6 +42,7 @@ export class TableSchema<
 	constructor(
 		public readonly tb: Tb,
 		public readonly _fields: Fd,
+		public readonly model?: TableModelConstructor<Tb, Fd>,
 	) {}
 
 	get fields(): Fd & { id: RecordType<Tb> } & {} {
@@ -45,6 +56,22 @@ export class TableSchema<
 
 	get schema(): GetSchemaType<Tb, Fd> {
 		return t.object(this.fields);
+	}
+
+	get Model(): TableModelBase<Tb, Fd> {
+		abstract class BaseModel {}
+		return BaseModel as TableModelBase<Tb, Fd>;
+	}
+
+	withModel<Model extends TableModelConstructor<Tb, Fd>>(
+		model: Model,
+	): TableSchema<Tb, Fd> & { readonly model: Model } {
+		return new TableSchema(this.tb, this._fields, model) as TableSchema<
+			Tb,
+			Fd
+		> & {
+			readonly model: Model;
+		};
 	}
 
 	/** Type-guard that checks whether a value matches this table's schema. */
@@ -73,6 +100,20 @@ export class TableSchema<
 export function table<
 	Tb extends string,
 	Fd extends Record<Exclude<string, "id">, AbstractType>,
->(tb: Tb extends string ? Tb : never, fields: Fd) {
-	return new TableSchema(tb, fields);
+>(tb: Tb extends string ? Tb : never, fields: Fd): TableSchema<Tb, Fd>;
+export function table<
+	Tb extends string,
+	Fd extends Record<Exclude<string, "id">, AbstractType>,
+	Model extends TableModelConstructor<Tb, Fd>,
+>(
+	tb: Tb extends string ? Tb : never,
+	fields: Fd,
+	model: Model,
+): TableSchema<Tb, Fd> & { readonly model: Model };
+export function table<
+	Tb extends string,
+	Fd extends Record<Exclude<string, "id">, AbstractType>,
+	Model extends TableModelConstructor<Tb, Fd>,
+>(tb: Tb extends string ? Tb : never, fields: Fd, model?: Model) {
+	return new TableSchema(tb, fields, model);
 }

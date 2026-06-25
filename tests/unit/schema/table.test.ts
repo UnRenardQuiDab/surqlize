@@ -150,4 +150,32 @@ describe("TableSchema", () => {
 
 		expect(post.validate(validRecord)).toBe(true);
 	});
+
+	test("stores optional model constructor metadata", () => {
+		const user = table("user", {
+			email: t.string(),
+			given_name: t.string(),
+			family_name: t.string(),
+		});
+
+		class User extends user.Model {
+			get fullName() {
+				return `${this.given_name} ${this.family_name}`;
+			}
+		}
+
+		const userWithModel = user.withModel(User);
+		const userWithModelArg = table("user", user._fields, User);
+
+		expect(user.model).toBeUndefined();
+		expect(userWithModel.tb).toBe("user");
+		expect(userWithModel._fields).toBe(user._fields);
+		expect(userWithModel.model).toBe(User);
+		expect(userWithModelArg.model).toBe(User);
+
+		type UserRecord = (typeof user)["type"];
+		type UserInstance = InstanceType<typeof User>;
+		const record = null as UserInstance | null;
+		void (record as UserRecord | null);
+	});
 });
