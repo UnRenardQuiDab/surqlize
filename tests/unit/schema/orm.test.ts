@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { GeometryPoint, Surreal } from "surrealdb";
+import { Duration, GeometryPoint, Surreal } from "surrealdb";
 import {
 	__display,
 	__type,
@@ -112,7 +112,20 @@ describe("orm() object form keeps full type support", () => {
 		expect(sample[0]?.name).toBe("Alice");
 	});
 });
+
 describe("orm() value inference", () => {
+	test("infers Duration values as duration types", () => {
+		const db = orm(new Surreal(), user);
+		const duration = new Duration("1h");
+		const value = db.value(duration);
+
+		type Value = t.infer<typeof value>;
+		const typed: Value = duration;
+
+		expect(value[__type].name).toBe("duration");
+		expect(typed).toBe(duration);
+	});
+
 	test("infers and binds GeometryPoint values as points", () => {
 		const db = orm(new Surreal(), user);
 		const point = new GeometryPoint([10, 20]);
