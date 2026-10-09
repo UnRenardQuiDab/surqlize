@@ -23,6 +23,13 @@ import { type Workable, type WorkableContext, workableGet } from "./workable";
 type RecordFields<C extends WorkableContext, Tb extends string> =
 	TableFieldsOf<C, Tb> extends ObjectType<infer O> ? MergeFields<O> : never;
 
+type UnionObjectFields<T extends AbstractType> =
+	T extends ObjectType<infer O> ? O : never;
+
+type UnionFields<Members extends AbstractType[]> = MergeFields<
+	UnionObjectFields<Members[number]>
+>;
+
 /** Field props for an `option<Inner>`: like `Inner`'s, but each kept optional. */
 type OptionalProps<C extends WorkableContext, Inner extends AbstractType> =
 	Inner extends ObjectType<infer O>
@@ -49,27 +56,36 @@ export type ActionableProps<C extends WorkableContext, T extends AbstractType> =
 							RecordFields<C, Tb>[K] & AbstractType
 						>;
 					}
-				: T extends GraphType<infer Tb>
-					? TableFieldsOf<C, Tb> extends ObjectType<infer O>
-						? { [K in keyof O]: Actionable<C, ArrayType<O[K]>> }
-						: unknown
-					: T extends ArrayType<infer A>
-						? A extends AbstractType
-							? {
-									[K: number]: Actionable<C, OptionType<A>>;
-								}
-							: A extends AbstractType[]
+				: T extends UnionType<infer Members extends AbstractType[]>
+					? [UnionObjectFields<Members[number]>] extends [never]
+						? unknown
+						: {
+								[K in keyof UnionFields<Members>]: Actionable<
+									C,
+									UnionFields<Members>[K] & AbstractType
+								>;
+							}
+					: T extends GraphType<infer Tb>
+						? TableFieldsOf<C, Tb> extends ObjectType<infer O>
+							? { [K in keyof O]: Actionable<C, ArrayType<O[K]>> }
+							: unknown
+						: T extends ArrayType<infer A>
+							? A extends AbstractType
 								? {
-										[K in keyof A as K extends keyof unknown[]
-											? never
-											: K]: A[K] extends AbstractType
-											? Actionable<C, A[K]>
-											: never;
-									} & {
-										[K: number]: Actionable<C, OptionType<UnionType<A>>>;
+										[K: number]: Actionable<C, OptionType<A>>;
 									}
-								: never
-						: unknown;
+								: A extends AbstractType[]
+									? {
+											[K in keyof A as K extends keyof unknown[]
+												? never
+												: K]: A[K] extends AbstractType
+												? Actionable<C, A[K]>
+												: never;
+										} & {
+											[K: number]: Actionable<C, OptionType<UnionType<A>>>;
+										}
+									: never
+							: unknown;
 
 export type Actionable<
 	C extends WorkableContext,
