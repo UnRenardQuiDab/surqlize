@@ -18,6 +18,13 @@ import {
 	throwIfInvalid,
 	type ValidationMode,
 } from "../validation";
+import type { EventOptions } from "./ddl/event-ddl";
+import type { IndexOptions } from "./ddl/index-ddl";
+import {
+	patchTableDdl,
+	type TableDdl,
+	type TablePermissions,
+} from "./ddl/table-ddl";
 import type { Orm } from "./orm";
 
 export type { ModelClass } from "../utils/model";
@@ -46,7 +53,7 @@ export type ComputedExpression<
 	Fd extends TableFields,
 	T extends AbstractType,
 > = (
-	row: Actionable<WorkableContext, ObjectType<Fd & { id: RecordType<Tb> }>>,
+	row: Actionable<WorkableContext, ObjectType<WithId<Tb, Fd>>>,
 	// biome-ignore lint/suspicious/noExplicitAny: the expression may query any registered table
 	db: Orm<any>,
 ) => Workable<WorkableContext, T>;
@@ -60,8 +67,20 @@ type ComputedDefinition = {
 	readonly expression: (row: never, db: never) => Workable;
 };
 
-/** A record mapping field names (excluding `id`) to their type definitions. */
-export type TableFields = Record<Exclude<string, "id">, AbstractType>;
+/** A record mapping field names to their type definitions. */
+export type TableFields = Record<string, AbstractType>;
+
+/**
+ * The table's fields with `id` filled in.
+ *
+ * SurrealDB gives every record an `id`, so one is injected when the schema does
+ * not declare it. A schema that *does* declare `id` keeps its own — useful when
+ * the table generates ids itself, e.g.
+ * `id: t.uuid().default(expr("rand::uuid::v7()")).readonly()`.
+ */
+type WithId<Tb extends string, Fd extends TableFields> = "id" extends keyof Fd
+	? Fd
+	: Fd & { id: RecordType<Tb> };
 
 /**
  * The object type of a table linked to a class: rows parse into instances of
@@ -93,8 +112,8 @@ type GetSchemaType<
 	Fd extends TableFields,
 	I = unknown,
 > = unknown extends I
-	? ObjectType<Fd & { id: RecordType<Tb> }>
-	: ModelType<Fd & { id: RecordType<Tb> }, I>;
+	? ObjectType<WithId<Tb, Fd>>
+	: ModelType<WithId<Tb, Fd>, I>;
 
 type GetInferType<
 	Tb extends string,
@@ -128,6 +147,9 @@ export class TableSchema<
 	) {
 		if (model) registerModelClass(model);
 	}
+
+	/** Schema metadata used to generate `DEFINE TABLE`. */
+	readonly ddl: Readonly<TableDdl> = {};
 
 	/**
 	 * Add a computed field: a read-only field whose value SurrealDB derives from
@@ -170,7 +192,7 @@ export class TableSchema<
 			);
 		}
 
-		return new TableSchema(
+		const next = new TableSchema(
 			this.tb,
 			{ ...this._fields, [name]: type } as unknown as Fd & {
 				[K in N]: Computed<T>;
@@ -181,6 +203,9 @@ export class TableSchema<
 				[name]: { type, expression } as ComputedDefinition,
 			},
 		);
+		// A computed field changes the fields, not the table's own definition.
+		(next as { ddl: TableDdl }).ddl = this.ddl;
+		return next;
 	}
 
 	/** The names of this table's computed fields. */
@@ -218,15 +243,16 @@ export class TableSchema<
 	// A table is immutable (`computed()` returns a new one), so what it derives
 	// from its fields is built once. Rebuilding it on every access made each
 	// query rebuild a whole object type per property lookup.
-	private _fieldsCache?: Fd & { id: RecordType<Tb> } & {};
+	private _fieldsCache?: WithId<Tb, Fd> & {};
 	private _schemaCache?: GetSchemaType<Tb, Fd, I>;
 
-	get fields(): Fd & { id: RecordType<Tb> } & {} {
+	get fields(): WithId<Tb, Fd> & {} {
 		if (!this._fieldsCache) {
+			// A schema that declares its own `id` keeps it, where it declared it.
 			this._fieldsCache = {
 				...this._fields,
-				id: t.record(this.tb as string),
-			} as Fd & { id: RecordType<Tb> } & {};
+				...("id" in this._fields ? {} : { id: t.record(this.tb as string) }),
+			} as WithId<Tb, Fd> & {};
 		}
 		return this._fieldsCache;
 	}
@@ -301,6 +327,86 @@ export class TableSchema<
 		const result = this.safeParse(data, options as { mode: "row" });
 		if (!result.success) throwIfInvalid(result.error.issues, this.tb);
 		return data;
+	}
+
+	// -------------------------------------------------------------------------
+	// Schema modifiers
+	//
+	// As with the field modifiers, each returns a clone rather than mutating —
+	// a table definition is routinely shared between several `orm()` instances.
+	// -------------------------------------------------------------------------
+
+	/** Enforce the declared fields, rejecting anything else. This is the default. */
+	schemafull(): this {
+		return patchTableDdl(this, (d) => {
+			d.schemafull = true;
+		});
+	}
+
+	/** Allow fields beyond those declared. */
+	schemaless(): this {
+		return patchTableDdl(this, (d) => {
+			d.schemafull = false;
+		});
+	}
+
+	/** Discard every record written to this table (`DROP`). */
+	drop(): this {
+		return patchTableDdl(this, (d) => {
+			d.drop = true;
+		});
+	}
+
+	/** Set the table's `PERMISSIONS`, either one rule or one per operation. */
+	permissions(rules: TablePermissions): this {
+		return patchTableDdl(this, (d) => {
+			d.permissions = rules;
+		});
+	}
+
+	/** Retain a change feed for `duration` (e.g. `"3d"`). */
+	changefeed(duration: string, includeOriginal = false): this {
+		return patchTableDdl(this, (d) => {
+			d.changefeed = { duration, includeOriginal };
+		});
+	}
+
+	/** Make this a computed view over another table (`AS SELECT …`). */
+	view(selectStatement: string): this {
+		return patchTableDdl(this, (d) => {
+			d.view = selectStatement;
+		});
+	}
+
+	/** Attach a `COMMENT` to the table. */
+	comment(text: string): this {
+		return patchTableDdl(this, (d) => {
+			d.comment = text;
+		});
+	}
+
+	/**
+	 * Add an index.
+	 *
+	 * @param name - The index name
+	 * @param options - What to index and how
+	 */
+	index(name: string, options: IndexOptions): this {
+		return patchTableDdl(this, (d) => {
+			d.indexes = { ...d.indexes, [name]: options };
+		});
+	}
+
+	/**
+	 * Add an event.
+	 *
+	 * @param name - The event name
+	 * @param options - What fires it and what it does
+	 */
+	event(name: string, options: EventOptions): this {
+		return patchTableDdl(this, (d) => {
+			d.events = { ...d.events, [name]: options };
+		});
 	}
 }
 

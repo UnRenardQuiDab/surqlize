@@ -48,6 +48,8 @@ A type-safe TypeScript ORM for SurrealDB that provides full type inference, a fl
 - **Runtime validation** - Opt in to checking written data against the schema before it is sent, with every failing field reported
 - **Rich type system** - Objects, arrays, unions, literals, options, and more
 - **SurrealDB functions** - Integrated string, array, and record operations
+- **Schema DDL** - Generate `DEFINE` statements from the same schema that types your queries
+- **Migrations** - Diff a schema against a live database and converge it, with `surqlize plan` / `migrate` / `rollback`
 
 ## Installation
 
@@ -1173,33 +1175,47 @@ The tables, edges and fields you describe with `t.*` can be turned into `DEFINE`
 ```ts
 import { generateSchema, toSurql } from "surqlize";
 
-const { statements, skipped } = generateSchema(db);
+const schema = generateSchema(db);
 
 // Apply it...
-await surreal.query(statements.map((s) => `${s.sql};`).join("\n"));
+await surreal.query(schema.statements.map((s) => s.sql).join("\n"));
 
-// ...or write it for a migration tool that reads `.surql` files.
-await Bun.write("database/schema/surqlize.surql", toSurql({ statements, skipped }));
+// ...or write it for a tool that reads `.surql` files.
+await Bun.write("database/schema/surqlize.surql", toSurql(schema));
 ```
 
-`generateSchema(db)` returns the tables before their fields, so the statements can run top to bottom. Each statement has a `kind`, a stable `name` (`user.address.city`, `post.items[*].k`) and its `sql`. It defines every table and edge (`TYPE RELATION IN … OUT …`), every field with its type and `DEFAULT`, and computed fields. Statements use `OVERWRITE` so they can be run again; pass `{ mode: "if-not-exists" }` to leave definitions that already exist.
+`generateSchema(db)` returns the tables before their fields, so the statements can run top to bottom. Each statement has a `kind`, a stable `name` (`user.address.city`, `post.items[*].k`) and its `sql`. It defines every table and edge (`TYPE RELATION IN … OUT …`), every field with its type and `DEFAULT`, indexes, events, and computed fields. Statements use `OVERWRITE` so they can be run again; pass `{ mode: "if-not-exists" }` to leave definitions that already exist.
 
 | Surqlize | SurrealQL |
 | --- | --- |
-| `t.string()`, `t.number()`, `t.bool()`, `t.uuid()`, `t.duration()` | `string`, `number`, `bool`, `uuid`, `duration` |
+| `t.string()`, `t.number()`, `t.int()`, `t.float()`, `t.bool()`, `t.uuid()`, `t.duration()`, `t.bytes()`, `t.any()` | `string`, `number`, `int`, `float`, `bool`, `uuid`, `duration`, `bytes`, `any` |
 | `t.date()`, `t.point()` | `datetime`, `geometry<point>` |
 | `t.option(x)` | `option<x>` |
 | `t.record("user")`, `t.record(["a", "b"])`, `t.record()` | `record<user>`, `record<a \| b>`, `record` |
 | `t.array(x)`, `t.array([x, y])` | `array<x>`, `[x, y]` |
-| `t.literal("a")`, `t.union([…])` | `"a"`, `a \| b` |
+| `t.literal("a")`, `t.union([…])` | `'a'`, `a \| b` |
 | `t.object({ … })` | `object`, with each field defined as `parent.field` |
 
-- **Tables are `SCHEMALESS` by default.** Declared fields are typed, and a field the schema does not declare is kept, as the client-side validation does. Pass `{ schemafull: true }` to have the database reject undeclared fields instead.
-- **Defaults.** A static value or an `expr()` becomes `DEFAULT`. A default that is a function (`() => new Date()`) can only run on the client, so it is left out of the statement and listed in `skipped` with the reason.
-- **Objects** are defined field by field, which lets them carry defaults and allows extra keys, through options and arrays (`items[*].name`). An object inside a union or a tuple becomes a literal object type (`{ kind: "a", n: number }`), which the database also holds to its exact keys.
-- **Nothing is guessed.** What has no SurrealQL type (a graph traversal, `t.never()`) is listed in `skipped` with its path and the reason.
+- **Tables are `SCHEMAFULL` by default**: the database rejects a field the schema does not declare. Call `.schemaless()` on a table to keep fields it does not declare, as the client-side validation does.
+- **Defaults.** A static value or an `expr()` becomes `DEFAULT`; a string is always data, so `expr("time::now()")` calls the function and `"time::now()"` stores the text. A default that is a function (`() => new Date()`) can only run on the client, so it is left out of the statement and listed in `skipped` with the reason.
+- **Objects** are defined field by field, which lets them carry defaults, through options and arrays (`items[*].name`, `grid[*][*].v`). An object inside a union or a tuple is written out as a literal object type (`{ kind: 'a', n: number }`), which the database also holds to its exact keys.
+- **Names** that are not plain identifiers are escaped (`⟨order-item⟩`).
 
-Integration tests apply the statements to a real server and check that it accepts and rejects the same values as the client-side types, for every mapping above.
+Integration tests apply the statements to a real server and check that it accepts and rejects the same values as the client-side types, for each mapping above. `t.set()` is the one known exception: the database takes and returns a JavaScript `Set`, and the type models an array.
+
+## Migrations
+
+The `surqlize` command compares a schema with a database and works out what has to change. The migrator is also available as a library from `surqlize/migrate`.
+
+```bash
+bunx surqlize init       # write surqlize.config.ts and a starter schema
+bunx surqlize plan       # show the statements that would run, without running them
+bunx surqlize migrate    # apply them, and record the migration
+bunx surqlize status     # list the migrations that have been applied
+bunx surqlize rollback   # undo the most recent migration
+```
+
+A schema is a module that exports the tables and edges to manage. Running `plan` again after `migrate` reports nothing to do, so a change that fails part-way is recovered by planning again. A field renamed with `.was("old")` is migrated by copying its values, not by dropping it. Database settings come from `surqlize.config.ts`, then `SURREAL_*` environment variables, then flags, and `-e <name>` selects a named environment.
 
 ## Reactive store
 
@@ -2377,9 +2393,15 @@ This project is in active development. Planned features include:
 - [x] **Live queries** - Real-time `LIVE SELECT` subscriptions with typed notifications
 - [x] **Runtime validation** - Validate data at runtime using schema definitions
 - [x] **Graph traversal** - Type-safe `.out()` / `.in()` edge navigation, multi-hop chaining, edge-field access, and edge filtering
+<<<<<<< HEAD
+- [ ] **Advanced graph traversal** - Recursive depth ranges, node collection (`collect`), and shortest-path finding (`shortest`)
+- [ ] **Performance optimizations** - Query caching, connection pooling
+- [x] **Schema migrations** - Declare the schema, diff it against the database, and converge
+=======
 - [x] **Advanced graph traversal** - Recursive depth ranges, node collection (`collect`), and shortest-path finding (`shortest`)
 - [x] **Performance optimizations** - Faster query construction (see [Performance](#performance)); connection pooling is left to the SDK, with sessions for isolation (see [Connections and pooling](#connections-and-pooling))
 - [ ] **Schema migrations** - Version control for database schemas
+>>>>>>> origin/main
 - [ ] **Documentation site** - Comprehensive guides and API reference
 
 ## Performance

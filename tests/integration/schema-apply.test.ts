@@ -18,11 +18,14 @@ const member = edge("user", "member", "team", { role: t.string() });
 describe("applying a generated schema (integration)", () => {
 	const getTestDb = withTestDb({ perTest: true });
 
-	async function apply(options?: Parameters<typeof generateSchema>[1]) {
+	async function apply(
+		options?: Parameters<typeof generateSchema>[1],
+		users: typeof user = user,
+	) {
 		const { surreal } = getTestDb();
-		const db = orm(surreal, user, team, member);
+		const db = orm(surreal, users, team, member);
 		const { statements } = generateSchema(db, options);
-		await surreal.query(statements.map((s) => `${s.sql};`).join("\n"));
+		await surreal.query(statements.map((s) => s.sql).join("\n"));
 		return { surreal, db };
 	}
 
@@ -88,7 +91,7 @@ describe("applying a generated schema (integration)", () => {
 			'CREATE user:a CONTENT { name: "A", address: { city: "x" } }',
 		);
 		const { statements } = generateSchema(db);
-		await surreal.query(statements.map((s) => `${s.sql};`).join("\n"));
+		await surreal.query(statements.map((s) => s.sql).join("\n"));
 		const [rows] = await surreal.query<[unknown[]]>("SELECT * FROM user");
 		expect(rows).toHaveLength(1);
 		const [info] =
@@ -100,8 +103,8 @@ describe("applying a generated schema (integration)", () => {
 		]);
 	});
 
-	test("schemafull rejects a field the schema does not declare", async () => {
-		const full = await apply({ schemafull: true });
+	test("a table rejects a field the schema does not declare, unless it is schemaless", async () => {
+		const full = await apply();
 		await expect(
 			full.surreal
 				.query(
@@ -112,7 +115,7 @@ describe("applying a generated schema (integration)", () => {
 	});
 
 	test("schemaless keeps a field the schema does not declare", async () => {
-		const { surreal } = await apply();
+		const { surreal } = await apply(undefined, user.schemaless());
 		await surreal.query(
 			'CREATE user:a CONTENT { name: "A", address: { city: "x" }, extra: 1 }',
 		);
@@ -129,7 +132,7 @@ describe("applying a generated schema (integration)", () => {
 		);
 		const db = orm(surreal, user, team, member);
 		const { statements } = generateSchema(db, { mode: "if-not-exists" });
-		await surreal.query(statements.map((s) => `${s.sql};`).join("\n"));
+		await surreal.query(statements.map((s) => s.sql).join("\n"));
 		// `team.name` stayed a number, as it was defined; the rest was created.
 		await surreal.query("CREATE team:a CONTENT { name: 5 }");
 		await expect(

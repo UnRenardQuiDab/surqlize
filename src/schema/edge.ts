@@ -11,6 +11,13 @@ import {
 	throwIfInvalid,
 	type ValidationMode,
 } from "../validation";
+import type { EventOptions } from "./ddl/event-ddl";
+import type { IndexOptions } from "./ddl/index-ddl";
+import {
+	patchTableDdl,
+	type TableDdl,
+	type TablePermissions,
+} from "./ddl/table-ddl";
 /** A record mapping field names (excluding `id`, `in`, `out`) to their type definitions. */
 export type EdgeFields = Record<
 	Exclude<string, "id" | "in" | "out">,
@@ -60,6 +67,9 @@ export class EdgeSchema<
 		public readonly _fields: Fd,
 	) {}
 
+	/** Schema metadata used to generate `DEFINE TABLE … TYPE RELATION`. */
+	readonly ddl: Readonly<TableDdl> = {};
+
 	// An edge is immutable, so what it derives from its fields is built once.
 	private _fieldsCache?: Fd & {
 		id: RecordType<Tb>;
@@ -76,7 +86,9 @@ export class EdgeSchema<
 		if (!this._fieldsCache) {
 			this._fieldsCache = {
 				...this._fields,
-				id: t.record(this.tb),
+				// A schema that declares its own `id` keeps it. `in` and `out` define
+				// the edge, so they follow the declared fields and cannot be changed.
+				...("id" in this._fields ? {} : { id: t.record(this.tb) }),
 				in: t.record(this.from),
 				out: t.record(this.to),
 			} as Fd & {
@@ -98,6 +110,80 @@ export class EdgeSchema<
 	/** Type-guard that checks whether a value matches this edge's schema. */
 	validate(value: unknown): value is GetEdgeInferType<From, Tb, To, Fd> {
 		return this.schema.validate(value);
+	}
+
+	// -------------------------------------------------------------------------
+	// Schema modifiers — see the note on TableSchema; each returns a clone.
+	// -------------------------------------------------------------------------
+
+	/** Enforce the declared fields, rejecting anything else. This is the default. */
+	schemafull(): this {
+		return patchTableDdl(this, (d) => {
+			d.schemafull = true;
+		});
+	}
+
+	/** Allow fields beyond those declared. */
+	schemaless(): this {
+		return patchTableDdl(this, (d) => {
+			d.schemafull = false;
+		});
+	}
+
+	/**
+	 * Reject edges whose `in` or `out` record does not exist (`ENFORCED`).
+	 *
+	 * Without this SurrealDB will happily create an edge pointing at nothing.
+	 */
+	enforced(): this {
+		return patchTableDdl(this, (d) => {
+			d.enforced = true;
+		});
+	}
+
+	/** Set the edge table's `PERMISSIONS`. */
+	permissions(rules: TablePermissions): this {
+		return patchTableDdl(this, (d) => {
+			d.permissions = rules;
+		});
+	}
+
+	/** Retain a change feed for `duration` (e.g. `"3d"`). */
+	changefeed(duration: string, includeOriginal = false): this {
+		return patchTableDdl(this, (d) => {
+			d.changefeed = { duration, includeOriginal };
+		});
+	}
+
+	/** Attach a `COMMENT` to the edge table. */
+	comment(text: string): this {
+		return patchTableDdl(this, (d) => {
+			d.comment = text;
+		});
+	}
+
+	/**
+	 * Add an index.
+	 *
+	 * @param name - The index name
+	 * @param options - What to index and how
+	 */
+	index(name: string, options: IndexOptions): this {
+		return patchTableDdl(this, (d) => {
+			d.indexes = { ...d.indexes, [name]: options };
+		});
+	}
+
+	/**
+	 * Add an event.
+	 *
+	 * @param name - The event name
+	 * @param options - What fires it and what it does
+	 */
+	event(name: string, options: EventOptions): this {
+		return patchTableDdl(this, (d) => {
+			d.events = { ...d.events, [name]: options };
+		});
 	}
 
 	/**

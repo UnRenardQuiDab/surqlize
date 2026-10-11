@@ -45,6 +45,11 @@
 			"types": "./dist/vue/index.d.ts",
 			"import": "./dist/vue/index.js",
 			"require": "./dist/vue/index.cjs"
+		},
+		"./migrate": {
+			"types": "./dist/migrate.d.ts",
+			"import": "./dist/migrate.js",
+			"require": "./dist/migrate.cjs"
 		}
 	},
 	"files": [
@@ -98,5 +103,8 @@
 		"check:dist": "tsc -p tsconfig.dist.json",
 		"prepublishOnly": "bun run build",
 		"qau": "biome check . --write --unsafe"
+	},
+	"bin": {
+		"surqlize": "./dist/cli.js"
 	}
 }

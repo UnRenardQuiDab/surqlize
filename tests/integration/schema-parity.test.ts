@@ -187,6 +187,21 @@ const cases: Case[] = [
 		],
 		bad: [{ kind: "a", s: "x" }, { kind: "c" }, OMIT],
 	},
+	{ name: "int", type: t.int(), ok: [1, -3, 0], bad: [1.5, "1", OMIT] },
+	{ name: "float", type: t.float(), ok: [1.5, 2], bad: ["1", OMIT] },
+	{
+		name: "bytes",
+		type: t.bytes(),
+		ok: [new Uint8Array([1, 2])],
+		bad: ["ab", [1, 2], OMIT],
+	},
+	{ name: "any", type: t.any(), ok: [1, "a", null, { a: 1 }, OMIT], bad: [] },
+	{
+		name: "literal holding a quote",
+		type: t.union([t.literal("it's"), t.literal('say "hi"')]),
+		ok: ["it's", 'say "hi"'],
+		bad: ["its", OMIT],
+	},
 	{
 		name: "tuple with an object",
 		type: t.array([t.string(), t.object({ n: t.number() })]),
@@ -227,10 +242,15 @@ describe("generated schema parity (integration)", () => {
 		}
 	}
 
+	// The database wants, and returns, a JS `Set` for `set<T>`; `t.set()` models an
+	// array, so its inferred type and its validation disagree with the database.
+	test.skip("set<string>: t.set() models an array, the database a Set", () => {});
+
 	for (const c of cases) {
 		test(`${c.name}: the database and the client agree`, async () => {
 			const { surreal } = getTestDb();
-			const schema = table("parity", { f: c.type });
+			// Schemaless, because the client accepts keys the schema does not declare.
+			const schema = table("parity", { f: c.type }).schemaless();
 			const { statements, skipped } = generateSchema(orm(surreal, schema));
 			expect(skipped).toEqual([]);
 			await surreal.query(statements.map((s) => `${s.sql};`).join("\n"));
