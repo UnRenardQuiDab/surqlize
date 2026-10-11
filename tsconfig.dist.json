@@ -18,6 +18,8 @@
 		"dist/react/index.d.ts",
 		"dist/react/index.d.cts",
 		"dist/solid/index.d.ts",
-		"dist/solid/index.d.cts"
+		"dist/solid/index.d.cts",
+		"dist/vue/index.d.ts",
+		"dist/vue/index.d.cts"
 	]
 }

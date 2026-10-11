@@ -8,6 +8,7 @@ export default defineConfig({
 		"svelte/index": "src/svelte/index.ts",
 		"react/index": "src/react/index.ts",
 		"solid/index": "src/solid/index.ts",
+		"vue/index": "src/vue/index.ts",
 	},
 	format: ["esm", "cjs"],
 	dts: true,
