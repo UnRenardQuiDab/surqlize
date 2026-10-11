@@ -35,6 +35,11 @@
 			"types": "./dist/solid/index.d.ts",
 			"import": "./dist/solid/index.js",
 			"require": "./dist/solid/index.cjs"
+		},
+		"./svelte": {
+			"types": "./dist/svelte/index.d.ts",
+			"import": "./dist/svelte/index.js",
+			"require": "./dist/svelte/index.cjs"
 		}
 	},
 	"files": [
@@ -53,6 +58,7 @@
 		"react-test-renderer": "^19.0.0",
 		"solid-js": "^1.8.0",
 		"surrealdb": "^2.1.0",
+		"svelte": "^5.0.0",
 		"tsup": "^8.5.1"
 	},
 	"peerDependencies": {

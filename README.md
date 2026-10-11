@@ -1336,6 +1336,36 @@ function Tasks() {
 - `usePending(store)` returns the writes the database has not accepted yet, for an "unsaved changes" indicator.
 - `StoreProvider` and `useStore<typeof db>()` pass the store down; you can also import the store directly.
 
+### Svelte
+
+`surqlize/svelte` gives Svelte stores, in the store contract that Svelte 3, 4 and 5 all use, so a query works with `$`, `get()` and `derived()`. It needs nothing beyond Svelte itself.
+
+```svelte
+<script>
+  import { pendingStore, queryStore } from "surqlize/svelte";
+  import { store } from "./store";
+
+  const tasks = store.query("task", (q) => q.where({ done: false }));
+  const open = queryStore(tasks);
+  const pending = pendingStore(store);
+</script>
+
+{#if $open.status === "loading"}
+  <p>Loading…</p>
+{:else if $open.status === "error"}
+  <button onclick={() => tasks.refetch()}>Retry</button>
+{:else if $open.status === "success"}
+  {#if $pending.length > 0}<p>Saving {$pending.length} changes…</p>{/if}
+  <ul>
+    {#each $open.data as task (String(task.id))}
+      <li>{task.title}</li>
+    {/each}
+  </ul>
+{/if}
+```
+
+- `queryStore(query)` calls back at once with the current snapshot and again on each change. The live subscription starts with the first subscriber and stops shortly after the last one leaves. Pass `null` or `undefined` to skip a query; the value is then `{ status: "skipped" }`.
+- `pendingStore(store)` holds the writes the database has not accepted yet.
 ### Solid
 
 `surqlize/solid` binds a store to Solid with primitives that return accessors. `solid-js` is an optional peer dependency.
