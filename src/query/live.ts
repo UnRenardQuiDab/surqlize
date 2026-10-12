@@ -9,6 +9,7 @@ import {
 	type Uuid,
 } from "surrealdb";
 import type { Orm } from "../schema/orm.ts";
+import { bindModelContexts } from "../schema/model";
 import { type AbstractType, ObjectType, type RecordType } from "../types";
 import { type Actionable, actionable } from "../utils/actionable.ts";
 import { type DisplayContext, displayContext } from "../utils/display.ts";
@@ -485,7 +486,9 @@ export class LiveQuery<
 		const mapValue = (raw: unknown): V => {
 			// DIFF yields JSON Patch arrays — pass them through unparsed.
 			if (diff) return raw as V;
-			return type.parse(raw) as V;
+			const parsed = type.parse(raw);
+			bindModelContexts(parsed, type, this[__ctx].orm);
+			return parsed as V;
 		};
 
 		return new LiveSubscription<V>(inner, mapValue);

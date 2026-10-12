@@ -1,4 +1,5 @@
 import { BoundQuery, type RetryValue } from "surrealdb";
+import { bindModelContexts } from "../schema/model";
 import type { AbstractType, ArrayType } from "../types";
 import {
 	__ctx,
@@ -96,8 +97,11 @@ export abstract class Query<
 	 */
 	parseResult(value: unknown): T["infer"] {
 		if (this._skipParse) return value as T["infer"];
-		if (this._lenient) return parseWritten(this[__type], value) as T["infer"];
-		return this.parse(value);
+		const parsed = this._lenient
+			? (parseWritten(this[__type], value) as T["infer"])
+			: this.parse(value);
+		bindModelContexts(parsed, this[__type], this[__ctx].orm);
+		return parsed;
 	}
 
 	/** Create a shallow clone of this query. */

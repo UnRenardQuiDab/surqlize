@@ -1,4 +1,5 @@
 import { RecordId } from "surrealdb";
+import { copyModelContext } from "../schema/model";
 import type { OutboxOp } from "./outbox";
 
 /**
@@ -52,9 +53,13 @@ function applyOp<T>(
 
 /** A copy of `row` with `data` merged over it, keeping what kind of object it is. */
 function patch<T>(row: T, data: Record<string, unknown>): T {
-	return Object.assign(
+	const copy = Object.assign(
 		Object.create(Object.getPrototypeOf(row)),
 		row,
 		data,
 	) as T;
+	if (typeof row === "object" && row !== null && typeof copy === "object") {
+		copyModelContext(row as object, copy as object);
+	}
+	return copy;
 }
