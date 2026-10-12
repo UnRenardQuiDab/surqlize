@@ -74,9 +74,15 @@ export class Transaction<T extends AnyTable[] = AnyTable[]> extends Orm<T> {
 
 	/** A handle on this same transaction with input validation switched on or off. */
 	override validated(enabled = true): Transaction<T> {
-		return new Transaction<T>(this._transaction, this.tables, this.lookup, {
-			validate: enabled,
-		}, this._modelLifecycle);
+		return new Transaction<T>(
+			this._transaction,
+			this.tables,
+			this.lookup,
+			{
+				validate: enabled,
+			},
+			this._modelLifecycle,
+		);
 	}
 
 	/**

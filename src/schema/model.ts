@@ -15,7 +15,6 @@ import type {
 	SetType,
 	UnionType,
 } from "../types";
-import type { ModelType } from "./model-type";
 import {
 	ArrayType as ArrayTypeClass,
 	ObjectType as ObjectTypeClass,
@@ -26,6 +25,7 @@ import {
 import type { WorkableContext } from "../utils";
 import { registerModelClass } from "../utils/model";
 import type { Orm } from "./orm";
+import type { ModelType } from "./model-type";
 
 // biome-ignore lint/suspicious/noExplicitAny: model classes are defined before their ORM schema is known.
 type UnboundOrm = Orm<any>;

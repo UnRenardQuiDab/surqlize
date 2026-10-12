@@ -139,11 +139,10 @@ export type CreateInput<T extends ObjectType> = {
 } & {};
 
 /** The schema fields a write may supply, without model-only members/computed fields. */
-export type WriteData<E extends AbstractType> = E extends ObjectType<
-	infer Fields extends Record<string, AbstractType>
->
-	? Omit<ObjectType<Fields>["infer"], ComputedKeys<Fields>>
-	: E["infer"];
+export type WriteData<E extends AbstractType> =
+	E extends ObjectType<infer Fields extends Record<string, AbstractType>>
+		? Omit<ObjectType<Fields>["infer"], ComputedKeys<Fields>>
+		: E["infer"];
 
 export type JsonPatchOp =
 	| { op: "add"; path: string; value: unknown }

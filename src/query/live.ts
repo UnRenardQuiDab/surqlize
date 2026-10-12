@@ -8,8 +8,8 @@ import {
 	Table,
 	type Uuid,
 } from "surrealdb";
-import type { Orm } from "../schema/orm.ts";
 import { bindModelContexts } from "../schema/model";
+import type { Orm } from "../schema/orm.ts";
 import { type AbstractType, ObjectType, type RecordType } from "../types";
 import { type Actionable, actionable } from "../utils/actionable.ts";
 import { type DisplayContext, displayContext } from "../utils/display.ts";

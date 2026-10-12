@@ -401,20 +401,21 @@ export class SelectQuery<
 	 */
 	where(
 		cb: (
-			tb: Actionable<C, ResolveEntry<E>> &
-				RowTraversal<C, T>,
+			tb: Actionable<C, ResolveEntry<E>> & RowTraversal<C, T>,
 		) => Workable<C>,
 	): this;
 	where(filter: WhereObject<C, ResolveEntry<E>>): this;
 	where(
 		input:
 			| ((
-					tb: Actionable<C, ResolveEntry<E>> &
-						RowTraversal<C, T>,
+					tb: Actionable<C, ResolveEntry<E>> & RowTraversal<C, T>,
 			  ) => Workable<C>)
 			| WhereObject<C, ResolveEntry<E>>,
 	): this {
-		const tb = this.rowActionable(this.entry) as Actionable<C, ResolveEntry<E>> &
+		const tb = this.rowActionable(this.entry) as Actionable<
+			C,
+			ResolveEntry<E>
+		> &
 			RowTraversal<C, T>;
 
 		const condition =
@@ -857,12 +858,7 @@ export function resolveFetchObject(
 		if (fieldType) resolved[head] = resolveFetchField(fieldType, tails, orm);
 	}
 	return schema instanceof ModelType
-		? new ModelType(
-				resolved,
-				schema.model,
-				schema.tb,
-				schema.usesModelBase,
-			)
+		? new ModelType(resolved, schema.model, schema.tb, schema.usesModelBase)
 		: new ObjectType(resolved);
 }
 

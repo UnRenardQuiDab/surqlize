@@ -8,12 +8,6 @@ import {
 	t,
 } from "../types";
 import {
-	createModelClass,
-	type ModelBaseConstructor,
-	type ModelConstructor,
-	usesModelBase,
-} from "./model";
-import {
 	__ctx,
 	__display,
 	__type,
@@ -36,6 +30,12 @@ import {
 	type TableDdl,
 	type TablePermissions,
 } from "./ddl/table-ddl";
+import {
+	createModelClass,
+	type ModelBaseConstructor,
+	type ModelConstructor,
+	usesModelBase,
+} from "./model";
 import { ModelType } from "./model-type";
 import type { Orm } from "./orm";
 

@@ -51,10 +51,10 @@ import { EdgeSchema } from "./edge";
 import type { FunctionCallable, InferParams } from "./function";
 import { type CreateSchemaLookup, createLookupFromSchemas } from "./lookup";
 import {
-	bindModelClass,
-	createModelTransactionLifecycle,
 	type AnyModelConstructor,
 	type BoundModelConstructor,
+	bindModelClass,
+	createModelTransactionLifecycle,
 } from "./model";
 import { TableSchema } from "./table";
 
@@ -64,26 +64,21 @@ export type AnyTable<Tb extends string = string> =
 	| EdgeSchema<string, Tb>;
 
 // biome-ignore lint/suspicious/noExplicitAny: TableSchema is invariant in its schema and instance generics.
-type AttachedModel<S> = S extends TableSchema<any, any, any, infer M>
-	? Extract<M, AnyModelConstructor>
-	: never;
+type AttachedModel<S> =
+	S extends TableSchema<any, any, any, infer M>
+		? Extract<M, AnyModelConstructor>
+		: never;
 
 type ModelTableNames<Tables> = {
-	[K in keyof Tables & string]: [AttachedModel<Tables[K]>] extends [
-		never,
-	]
+	[K in keyof Tables & string]: [AttachedModel<Tables[K]>] extends [never]
 		? never
 		: K;
 }[keyof Tables & string];
 
-type ModelSchemaFor<Tables, T extends keyof Tables> = Tables[T] extends TableSchema<
-	infer Tb,
-	infer Fd,
-	infer I,
-	infer M
->
-	? TableSchema<Tb, Fd, I, M>
-	: never;
+type ModelSchemaFor<Tables, T extends keyof Tables> =
+	Tables[T] extends TableSchema<infer Tb, infer Fd, infer I, infer M>
+		? TableSchema<Tb, Fd, I, M>
+		: never;
 
 const modelCaches = new WeakMap<object, Map<string, AnyModelConstructor>>();
 
@@ -789,9 +784,15 @@ export class Orm<T extends AnyTable[] = AnyTable[]> {
 		const { Transaction: Tx } = await import("../query/transaction");
 		const modelLifecycle = createModelTransactionLifecycle(this);
 		const surrealTx = await this.surreal.beginTransaction();
-		const tx = new Tx<T>(surrealTx, this.tables, this.lookup, {
-			validate: this.validation,
-		}, modelLifecycle);
+		const tx = new Tx<T>(
+			surrealTx,
+			this.tables,
+			this.lookup,
+			{
+				validate: this.validation,
+			},
+			modelLifecycle,
+		);
 
 		if (!cb) return tx;
 
