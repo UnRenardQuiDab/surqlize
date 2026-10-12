@@ -238,7 +238,7 @@ describe("ORM-bound model API", () => {
 		expect(committedRecord!.$orm).toBe(alias);
 		await tx.commit();
 		expect(committedRecord!.$orm).toBe(db);
-		await expect(committedRecord!.select()).resolves.toBeDefined();
+		expect(await committedRecord!.select()).toBeDefined();
 
 		const rollback = await db.transaction();
 		const [cancelledRecord] = rollback
