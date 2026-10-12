@@ -292,15 +292,16 @@ describe("ORM-bound model API", () => {
 
 const typingDb = createDb().db;
 const typingModel = typingDb.model("user");
-const fetchedProfile: Profile | undefined = typingDb
-	.select("user")
-	.fetch("profile").type[0]?.profile;
 const customStaticResult: Promise<User | undefined> =
 	null as unknown as ReturnType<typeof typingModel.findByEmail>;
-void fetchedProfile;
 void customStaticResult;
 
 function checkModelTypes() {
+	const fetchedProfile: Profile | undefined = typingDb
+		.select("user")
+		.fetch("profile").type[0]?.profile;
+	void fetchedProfile;
+
 	const callbackResult: Promise<User | undefined> = typingDb.transaction(
 		async (tx) => tx.model("user").findByEmail("ada@example.com"),
 	);
