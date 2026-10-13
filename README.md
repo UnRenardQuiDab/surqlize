@@ -308,11 +308,11 @@ class User extends user.model() {
   }
 
   rename(name: string) {
-    return this.update().set({ name });
+    return this.$orm.update(this.id).set({ name });
   }
 
   static findByEmail(email: string) {
-    return this.select()
+    return this.$orm.select("user")
       .where((row) => row.email.eq(email))
       .then.val();
   }
@@ -326,7 +326,9 @@ await ada?.rename("Ada Lovelace");
 
 `db.model()` returns a cached constructor bound to that ORM handle. Its static
 `select`, `create`, `insert`, `update`, `upsert` and `delete` methods use the
-existing query builders. Use this facade for static queries:
+existing query builders. The facade's `$orm` property is also available inside
+custom static methods, while a hydrated instance exposes the same bound handle
+to its instance methods. Use this facade for static queries:
 
 ```typescript illustrative
 const UserModel = db.model("user");
@@ -334,18 +336,30 @@ const ada = await UserModel.findByEmail("ada@example.com");
 ```
 
 Parsed rows are instances of the attached `User` class and expose `$orm`,
-`select()`, `update()` and `delete()`; instance queries always target that
+`select()`, `update()` and `delete()`. An instance method can use `$orm` to
+query any registered table, or use a helper such as `update()` to target that
 record's ID:
 
 ```typescript illustrative
 await ada?.rename("Ada Lovelace");
 ```
 
-The facade's static queries and a parsed row's instance helpers use the ORM
-handle bound to that facade or row. Do not use `User.select()` or
-`ada?.constructor.select()` to recover the ORM: the attached class's statics
-are unbound. A custom `hydrate()` may return `new User()`, while an inherited
-hydrator called through `UserModel.hydrate()` may construct the bound subclass.
+Both static and instance methods use the handle bound to the facade or row.
+Call custom static methods through `db.model()` (or `tx.model()` inside a
+transaction), so their `$orm` points to that handle. The original `User` class
+and `ada?.constructor` are unbound. For example, the same methods work through a
+transaction-bound model:
+
+```typescript illustrative
+await db.transaction(async (tx) => {
+  const UserModel = tx.model("user");
+  const ada = await UserModel.findByEmail("ada@example.com");
+  await ada?.rename("Ada Lovelace");
+});
+```
+
+A custom `hydrate()` may return `new User()`, while an inherited hydrator called
+through `UserModel.hydrate()` may construct the bound subclass.
 Consequently, depend on `row instanceof User` and its instance helpers, not on
 `row.constructor === UserModel` or on exact constructor equality across
 construction paths.
