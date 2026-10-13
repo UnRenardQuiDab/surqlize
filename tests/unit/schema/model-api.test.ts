@@ -65,8 +65,11 @@ type Equal<A, B> =
 		: false;
 type Expect<T extends true> = T;
 
-function createDb(commitFails = false) {
+function createDb(commitFails = false, cancelFails = false) {
 	const calls: { query: string; variables: Record<string, unknown> }[] = [];
+	const transactionCalls = { commit: 0, cancel: 0 };
+	const commitError = new Error("commit failed");
+	const cancelError = new Error("cancel failed");
 	const rawUser = {
 		id: new RecordId("user", "ada"),
 		name: "Ada",
@@ -83,9 +86,13 @@ function createDb(commitFails = false) {
 		},
 		withSignal: () => transaction,
 		commit: async () => {
-			if (commitFails) throw new Error("commit failed");
+			transactionCalls.commit += 1;
+			if (commitFails) throw commitError;
 		},
-		cancel: async () => {},
+		cancel: async () => {
+			transactionCalls.cancel += 1;
+			if (cancelFails) throw cancelError;
+		},
 	};
 	session = {
 		query: async (query: string, variables: Record<string, unknown> = {}) => {
@@ -96,7 +103,7 @@ function createDb(commitFails = false) {
 		beginTransaction: async () => transaction,
 	};
 	const db = orm(session as SurrealSession, attachedUser, attachedProfile);
-	return { db, calls, rawUser };
+	return { db, calls, rawUser, transactionCalls, commitError, cancelError };
 }
 
 describe("ORM-bound model API", () => {
@@ -265,6 +272,7 @@ describe("ORM-bound model API", () => {
 		await tx.commit();
 		expect(committedRecord!.$orm).toBe(db);
 		expect(await committedRecord!.select()).toBeDefined();
+		await expect(tx.cancel()).rejects.toThrow("already completed");
 
 		const rollback = await db.transaction();
 		const [cancelledRecord] = rollback
@@ -280,11 +288,49 @@ describe("ORM-bound model API", () => {
 	});
 
 	test("invalidates models after a failed commit", async () => {
-		const { db, rawUser } = createDb(true);
+		const { db, rawUser, transactionCalls, commitError } = createDb(true);
 		const tx = await db.transaction();
 		const [record] = tx.model("user").select().parseResult([rawUser]);
 
-		await expect(tx.commit()).rejects.toThrow("commit failed");
+		await expect(tx.commit()).rejects.toBe(commitError);
+		expect(() => record!.$orm).toThrow("completed or cancelled transaction");
+		await Promise.all([
+			tx.withSignal(new AbortController().signal).validated().cancel(),
+			tx.validated().cancel(),
+		]);
+		await tx.cancel();
+		expect(transactionCalls).toEqual({ commit: 1, cancel: 1 });
+		expect(() => record!.$orm).toThrow("completed or cancelled transaction");
+	});
+
+	test("callback transactions preserve the original error when cleanup fails", async () => {
+		const commitFailure = createDb(true, true);
+		await expect(
+			commitFailure.db.transaction(async () => undefined),
+		).rejects.toBe(commitFailure.commitError);
+		expect(commitFailure.transactionCalls).toEqual({ commit: 1, cancel: 1 });
+
+		const callbackFailure = createDb(false, true);
+		const callbackError = new Error("callback failed");
+		await expect(
+			callbackFailure.db.transaction(async () => {
+				throw callbackError;
+			}),
+		).rejects.toBe(callbackError);
+		expect(callbackFailure.transactionCalls).toEqual({ commit: 0, cancel: 1 });
+	});
+
+	test("invalidates escaped models even when manual cancellation fails", async () => {
+		const { db, rawUser, cancelError, transactionCalls } = createDb(
+			false,
+			true,
+		);
+		const tx = await db.transaction();
+		const [record] = tx.model("user").select().parseResult([rawUser]);
+
+		await expect(tx.cancel()).rejects.toBe(cancelError);
+		await tx.withSignal(undefined).validated().cancel();
+		expect(transactionCalls.cancel).toBe(1);
 		expect(() => record!.$orm).toThrow("completed or cancelled transaction");
 	});
 

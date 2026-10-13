@@ -120,7 +120,8 @@ export class Transaction<T extends AnyTable[] = AnyTable[]> extends Orm<T> {
 		if (this._modelLifecycle.state === "committed") {
 			throw new OrmError("This transaction has already completed");
 		}
-		if (this._modelLifecycle.state === "invalid") return;
+		if (this._modelLifecycle.cancelAttempted) return;
+		this._modelLifecycle.cancelAttempted = true;
 		try {
 			await this._transaction.cancel();
 		} finally {

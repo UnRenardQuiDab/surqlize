@@ -801,7 +801,11 @@ export class Orm<T extends AnyTable[] = AnyTable[]> {
 			await tx.commit();
 			return result;
 		} catch (e) {
-			await tx.cancel();
+			try {
+				await tx.cancel();
+			} catch {
+				// Keep the callback or commit failure as the transaction result.
+			}
 			throw e;
 		}
 	}

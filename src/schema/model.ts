@@ -300,6 +300,7 @@ export type ModelRuntimeContext<O extends UnboundOrm = UnboundOrm> = {
 export type ModelTransactionLifecycle = {
 	parent: UnboundOrm;
 	state: "active" | "committed" | "invalid";
+	cancelAttempted: boolean;
 	contexts: Set<ModelRuntimeContext>;
 };
 
@@ -345,7 +346,12 @@ export function copyModelContext(source: object, target: object): void {
 export function createModelTransactionLifecycle(
 	parent: UnboundOrm,
 ): ModelTransactionLifecycle {
-	return { parent, state: "active", contexts: new Set() };
+	return {
+		parent,
+		state: "active",
+		cancelAttempted: false,
+		contexts: new Set(),
+	};
 }
 
 /** Rebind models from a committed transaction to its parent ORM. */
