@@ -184,6 +184,35 @@ describe("ORM-bound model API", () => {
 		}
 	});
 
+	test("keeps ORM statics on the bound facade and instance helpers on parsed rows", async () => {
+		const first = createDb();
+		const second = createDb();
+		const firstModel = first.db.model("user");
+		const secondModel = second.db.model("user");
+		const [firstRow] = firstModel.select().parseResult([first.rawUser]);
+		const [secondRow] = secondModel.select().parseResult([second.rawUser]);
+
+		expect(firstModel).not.toBe(secondModel);
+		expect(firstRow).toBeInstanceOf(User);
+		expect(firstRow!.constructor).toBe(User);
+		expect(firstRow!.$orm).toBe(first.db);
+		expect(secondRow!.$orm).toBe(second.db);
+		expect(() => User.findByEmail("ada@example.com")).toThrow(OrmError);
+		expect(() =>
+			(firstRow!.constructor as typeof User).findByEmail("ada@example.com"),
+		).toThrow(OrmError);
+
+		const firstStaticResult = await firstModel.findByEmail("ada@example.com");
+		const secondStaticResult = await secondModel.findByEmail("ada@example.com");
+		expect(firstStaticResult!.$orm).toBe(first.db);
+		expect(secondStaticResult!.$orm).toBe(second.db);
+
+		await firstRow!.select();
+		await secondRow!.select();
+		expect(first.calls).toHaveLength(2);
+		expect(second.calls).toHaveLength(2);
+	});
+
 	test("binds models parsed through the public parse method", () => {
 		const { db, calls, rawUser } = createDb();
 		const [record] = db.model("user").select().parse([rawUser]);

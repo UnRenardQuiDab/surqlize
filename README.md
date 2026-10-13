@@ -324,8 +324,30 @@ await ada?.rename("Ada Lovelace");
 
 `db.model()` returns a cached constructor bound to that ORM handle. Its static
 `select`, `create`, `insert`, `update`, `upsert` and `delete` methods use the
-existing query builders. Parsed model instances expose `$orm`, `select()`,
-`update()` and `delete()`; instance queries always target that record's ID.
+existing query builders. Use this facade for static queries:
+
+```typescript
+const UserModel = db.model("user");
+const ada = await UserModel.findByEmail("ada@example.com");
+```
+
+Parsed rows are instances of the attached `User` class and expose `$orm`,
+`select()`, `update()` and `delete()`; instance queries always target that
+record's ID:
+
+```typescript
+await ada?.rename("Ada Lovelace");
+```
+
+The facade's static queries and a parsed row's instance helpers use the ORM
+handle bound to that facade or row. Do not use `User.select()` or
+`ada?.constructor.select()` to recover the ORM: the attached class's statics
+are unbound. A custom `hydrate()` may return `new User()`, while an inherited
+hydrator called through `UserModel.hydrate()` may construct the bound subclass.
+Consequently, depend on `row instanceof User` and its instance helpers, not on
+`row.constructor === UserModel` or on exact constructor equality across
+construction paths.
+
 Nested models loaded with `.fetch()` receive the same ORM context, while plain
 `.return()` projections stay plain objects unless a projected field contains a
 model schema.
