@@ -49,6 +49,9 @@ type FieldKeys<O extends Orm, T extends keyof O["tables"] & string> =
 		? keyof F & string
 		: string;
 
+/** The source row shape stays fixed when the query result is projected/fetched. */
+type SourceEntry<S extends AbstractType> = ResolveEntry<S>;
+
 /**
  * The `.extend({ … })` method exposed on the `.return()` row: it projects every
  * field of the row, merged with (and overridden by) the given computed fields,
@@ -255,6 +258,7 @@ export class SelectQuery<
 	T extends keyof O["tables"] & string,
 	E extends AbstractType = O["tables"][T]["schema"],
 	Only extends boolean = false,
+	Source extends AbstractType = E,
 > extends Query<C, QueryResult<E, Only>> {
 	readonly [__ctx]: C;
 	private _only = false;
@@ -331,10 +335,10 @@ export class SelectQuery<
 		>;
 	}
 
-	only(): SelectQuery<O, C, T, E, true> {
+	only(): SelectQuery<O, C, T, E, true, Source> {
 		return this.derive((next) => {
 			next._only = true;
-		}) as SelectQuery<O, C, T, E, true>;
+		}) as SelectQuery<O, C, T, E, true, Source>;
 	}
 
 	/**
@@ -368,7 +372,7 @@ export class SelectQuery<
 				RowTraversal<C, T> &
 				RowExtend<C, ResolveEntry<E>>,
 		) => P,
-	): SelectQuery<O, C, T, R, Only> {
+	): SelectQuery<O, C, T, R, Only, Source> {
 		const tb = this.rowActionable(this.entry) as Actionable<
 			C,
 			ResolveEntry<E>
@@ -387,10 +391,17 @@ export class SelectQuery<
 		const entryFields = fields ? Object.entries(fields) : undefined;
 
 		return this.derive((next) => {
-			const select = next as unknown as SelectQuery<O, C, T, R, Only>;
+			const select = next as unknown as SelectQuery<
+				O,
+				C,
+				T,
+				R,
+				Only,
+				Source
+			>;
 			select._entry = entry;
 			select._entryFields = entryFields;
-		}) as unknown as SelectQuery<O, C, T, R, Only>;
+		}) as unknown as SelectQuery<O, C, T, R, Only, Source>;
 	}
 
 	/**
@@ -401,20 +412,21 @@ export class SelectQuery<
 	 */
 	where(
 		cb: (
-			tb: Actionable<C, ResolveEntry<E>> & RowTraversal<C, T>,
+			tb: Actionable<C, SourceEntry<Source>> & RowTraversal<C, T>,
 		) => Workable<C>,
 	): this;
-	where(filter: WhereObject<C, ResolveEntry<E>>): this;
+	where(filter: WhereObject<C, SourceEntry<Source>>): this;
 	where(
 		input:
 			| ((
-					tb: Actionable<C, ResolveEntry<E>> & RowTraversal<C, T>,
+					tb: Actionable<C, SourceEntry<Source>> & RowTraversal<C, T>,
 			  ) => Workable<C>)
-			| WhereObject<C, ResolveEntry<E>>,
+			| WhereObject<C, SourceEntry<Source>>,
 	): this {
-		const tb = this.rowActionable(this.entry) as Actionable<
+		const sourceSchema = resolveSubjectSchema(this[__ctx].orm, this.tb);
+		const tb = this.rowActionable(sourceSchema) as Actionable<
 			C,
-			ResolveEntry<E>
+			SourceEntry<Source>
 		> &
 			RowTraversal<C, T>;
 
@@ -634,7 +646,7 @@ export class SelectQuery<
 
 	fetch<P extends FetchPaths<O, T>>(
 		...fields: P[]
-	): SelectQuery<O, C, T, FetchedSchema<O, E, P>, Only> {
+	): SelectQuery<O, C, T, FetchedSchema<O, E, P>, Only, Source> {
 		// Build a resolved schema where fetched record references are replaced
 		// with the referenced table's ObjectType schema, recursing into nested
 		// paths so parse() validates the resolved objects instead of expecting
@@ -650,7 +662,14 @@ export class SelectQuery<
 		return this.derive((next) => {
 			next._fetch = fields;
 			if (resolved) next._fetchResolvedType = resolved;
-		}) as unknown as SelectQuery<O, C, T, FetchedSchema<O, E, P>, Only>;
+		}) as unknown as SelectQuery<
+			O,
+			C,
+			T,
+			FetchedSchema<O, E, P>,
+			Only,
+			Source
+		>;
 	}
 
 	timeout(duration: string): this {
