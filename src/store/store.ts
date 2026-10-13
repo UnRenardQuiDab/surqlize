@@ -5,7 +5,7 @@ import type { CreateInput } from "../query/modification-methods";
 import type { SelectQuery } from "../query/select";
 import { bindModelContexts, hydrateModelRow } from "../schema/model";
 import type { AnyTable, Orm } from "../schema/orm";
-import { ModelType } from "../schema/table";
+import { ModelType } from "../schema/model-type";
 import type { WorkableContext } from "../utils";
 import { matchesWhere } from "./match";
 import {

@@ -244,7 +244,12 @@ function splitSchema(
 		}
 	}
 	return schema instanceof ModelType
-		? new ModelType(resolved, schema.model)
+		? new ModelType(
+				resolved,
+				schema.model,
+				schema.tb,
+				schema.usesModelBase,
+			)
 		: new ObjectType(resolved);
 }
 

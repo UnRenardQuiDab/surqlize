@@ -174,6 +174,8 @@ export class ModelBase<
 	S extends ModelSchema,
 	O extends UnboundOrm = UnboundOrm,
 > {
+	// Keep concrete model instances assignable to wider table schema types.
+	[key: string]: unknown;
 	declare readonly [MODEL_BASE_INSTANCE]: true;
 	declare readonly $orm: O;
 
