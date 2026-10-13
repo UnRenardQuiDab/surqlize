@@ -289,6 +289,8 @@ initialize constructor state during hydration. Attach the class before passing
 the schema to `orm()`:
 
 ```typescript
+import { orm, table, t, type HydrationInput } from "surqlize";
+
 const user = table("user", {
   name: t.string(),
   email: t.string(),
@@ -326,7 +328,7 @@ await ada?.rename("Ada Lovelace");
 `select`, `create`, `insert`, `update`, `upsert` and `delete` methods use the
 existing query builders. Use this facade for static queries:
 
-```typescript
+```typescript illustrative
 const UserModel = db.model("user");
 const ada = await UserModel.findByEmail("ada@example.com");
 ```
@@ -335,7 +337,7 @@ Parsed rows are instances of the attached `User` class and expose `$orm`,
 `select()`, `update()` and `delete()`; instance queries always target that
 record's ID:
 
-```typescript
+```typescript illustrative
 await ada?.rename("Ada Lovelace");
 ```
 
