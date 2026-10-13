@@ -226,6 +226,7 @@ export interface ModelStaticOperations<
 	O extends UnboundOrm,
 	S extends ModelSchema,
 > {
+	readonly $orm: O;
 	select<C extends ModelClass>(this: C): ModelSelect<O, S, C>;
 	create<C extends ModelClass>(this: C): ModelCreate<O, S, C>;
 	insert<C extends ModelClass>(
@@ -416,6 +417,10 @@ export function createModelClass<S extends ModelSchema>() {
 		static hydrate(record: HydrationInput<S["schema"]>) {
 			// biome-ignore lint/complexity/noThisInStatic: subclasses inherit this factory and need their own constructor.
 			return Object.assign(new this(), record);
+		}
+
+		static get $orm(): never {
+			return unboundModelError();
 		}
 
 		static select(): never {
@@ -620,6 +625,10 @@ export function bindModelClass<
 	O extends UnboundOrm,
 >(model: C, orm: O, tb: ModelTableName<O, S>): BoundModelConstructor<C, S, O> {
 	class BoundModel extends model {
+		static get $orm(): O {
+			return orm;
+		}
+
 		static hydrate(record: HydrationInput<S["schema"]>) {
 			const hydrate = model.hydrate;
 			const instance = (
