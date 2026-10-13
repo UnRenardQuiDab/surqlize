@@ -244,12 +244,7 @@ function splitSchema(
 		}
 	}
 	return schema instanceof ModelType
-		? new ModelType(
-				resolved,
-				schema.model,
-				schema.tb,
-				schema.usesModelBase,
-			)
+		? new ModelType(resolved, schema.model, schema.tb, schema.usesModelBase)
 		: new ObjectType(resolved);
 }
 
@@ -396,14 +391,7 @@ export class SelectQuery<
 		const entryFields = fields ? Object.entries(fields) : undefined;
 
 		return this.derive((next) => {
-			const select = next as unknown as SelectQuery<
-				O,
-				C,
-				T,
-				R,
-				Only,
-				Source
-			>;
+			const select = next as unknown as SelectQuery<O, C, T, R, Only, Source>;
 			select._entry = entry;
 			select._entryFields = entryFields;
 		}) as unknown as SelectQuery<O, C, T, R, Only, Source>;

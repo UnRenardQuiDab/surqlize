@@ -24,8 +24,8 @@ import {
 } from "../types";
 import type { WorkableContext } from "../utils";
 import { type ModelClass, registerModelClass } from "../utils/model";
-import type { Orm } from "./orm";
 import type { ModelType } from "./model-type";
+import type { Orm } from "./orm";
 
 // biome-ignore lint/suspicious/noExplicitAny: model classes are defined before their ORM schema is known.
 type UnboundOrm = Orm<any>;

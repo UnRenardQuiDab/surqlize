@@ -82,6 +82,7 @@ function createDb(commitFails = false, cancelFails = false) {
 	transaction = {
 		query: async (query: string, variables: Record<string, unknown> = {}) => {
 			calls.push({ query, variables });
+			if (query.startsWith("(DELETE")) return [[]];
 			return [[rawUser]];
 		},
 		withSignal: () => transaction,
@@ -97,6 +98,7 @@ function createDb(commitFails = false, cancelFails = false) {
 	session = {
 		query: async (query: string, variables: Record<string, unknown> = {}) => {
 			calls.push({ query, variables });
+			if (query.startsWith("(DELETE")) return [[]];
 			return [[rawUser]];
 		},
 		withSignal: () => session,

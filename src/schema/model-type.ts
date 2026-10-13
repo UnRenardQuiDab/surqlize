@@ -1,10 +1,10 @@
 import { type AbstractType, ObjectType } from "../types";
+import type { ModelClass } from "../utils/model";
 import {
 	hydrateModelRow,
 	MODEL_SCHEMA,
 	type ModelSchemaMetadata,
 } from "./model";
-import type { ModelClass } from "../utils/model";
 
 /**
  * The object type of a table linked to a class: rows parse into instances of
