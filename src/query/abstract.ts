@@ -87,7 +87,9 @@ export abstract class Query<
 
 	/** Parse and validate a raw query result against this query's result type. */
 	parse(value: unknown): T["infer"] {
-		return this[__type].parse(value);
+		const parsed = this[__type].parse(value);
+		bindModelContexts(parsed, this[__type], this[__ctx].orm);
+		return parsed;
 	}
 
 	/**
@@ -97,11 +99,12 @@ export abstract class Query<
 	 */
 	parseResult(value: unknown): T["infer"] {
 		if (this._skipParse) return value as T["infer"];
-		const parsed = this._lenient
-			? (parseWritten(this[__type], value) as T["infer"])
-			: this.parse(value);
-		bindModelContexts(parsed, this[__type], this[__ctx].orm);
-		return parsed;
+		if (this._lenient) {
+			const parsed = parseWritten(this[__type], value) as T["infer"];
+			bindModelContexts(parsed, this[__type], this[__ctx].orm);
+			return parsed;
+		}
+		return this.parse(value);
 	}
 
 	/** Create a shallow clone of this query. */

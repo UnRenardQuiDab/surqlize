@@ -177,6 +177,32 @@ describe("ORM-bound model API", () => {
 		}
 	});
 
+	test("binds models parsed through the public parse method", () => {
+		const { db, calls, rawUser } = createDb();
+		const [record] = db.model("user").select().parse([rawUser]);
+
+		expect(record).toBeInstanceOf(User);
+		expect(record!.label).toBe("User: Ada");
+		expect(record!.upperName()).toBe("ADA");
+		expect(record!.$orm).toBe(db);
+		expect(record!.select()).toBeDefined();
+		expect(record!.rename("Augusta")).toBeDefined();
+
+		const rawProfile = {
+			id: new RecordId("profile", "p1"),
+			name: "Countess",
+		};
+		const [withFetchedProfile] = db
+			.select("user")
+			.fetch("profile", "profiles")
+			.parse([{ ...rawUser, profile: rawProfile, profiles: [rawProfile] }]);
+
+		expect(withFetchedProfile!.$orm).toBe(db);
+		expect(withFetchedProfile!.profile?.$orm).toBe(db);
+		expect(withFetchedProfile!.profiles[0]!.$orm).toBe(db);
+		expect(calls).toHaveLength(0);
+	});
+
 	test("binds nested FETCH models and leaves projections plain", () => {
 		const { db, rawUser } = createDb();
 		const rawProfile = {
