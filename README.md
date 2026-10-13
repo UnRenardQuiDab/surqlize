@@ -330,11 +330,16 @@ Nested models loaded with `.fetch()` receive the same ORM context, while plain
 `.return()` projections stay plain objects unless a projected field contains a
 model schema.
 
-The optional synchronous `static hydrate()` receives schema-parsed row data.
-Use it to run constructors and initialize private fields or arrow properties.
-Without a custom hydrator, class-linked tables keep the existing
-constructor-bypassing behavior. ORM context is held outside the record and
-model methods are omitted when a model instance is serialized as write data.
+The optional synchronous `static hydrate()` receives schema-parsed row data
+when a query returns a record. The store also uses it for optimistic writes:
+those rows may be partial, such as a create that is still waiting for a
+database default, and the store may hydrate them again when it republishes a
+pending view. Keep hydrators tolerant of missing database-generated fields and
+free of external side effects. Use a hydrator to run constructors and initialize
+private fields or arrow properties. Without a custom hydrator, class-linked
+tables keep the existing constructor-bypassing behavior. ORM context is held
+outside the record and model methods are omitted when a model instance is
+serialized as write data.
 Models read inside a transaction use that transaction until it commits; after
 commit their helpers use the parent ORM, and models from a cancelled
 transaction reject helper access.

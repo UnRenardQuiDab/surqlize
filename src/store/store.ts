@@ -3,7 +3,9 @@ import { OrmError } from "../error";
 import type { LiveMessage } from "../query/live";
 import type { CreateInput } from "../query/modification-methods";
 import type { SelectQuery } from "../query/select";
+import { bindModelContexts, hydrateModelRow } from "../schema/model";
 import type { AnyTable, Orm } from "../schema/orm";
+import { ModelType } from "../schema/table";
 import type { WorkableContext } from "../utils";
 import { matchesWhere } from "./match";
 import {
@@ -12,7 +14,10 @@ import {
 	type OutboxOp,
 	type OutboxStorage,
 } from "./outbox";
-import { applyOverlay } from "./overlay";
+import {
+	applyOverlayWithMaterializer,
+	type OverlayMaterializer,
+} from "./overlay";
 import {
 	type ConnectionSignal,
 	QueryStore,
@@ -259,7 +264,44 @@ export class Store<O extends StoreOrm> {
 		const query = (build ? build(select as never) : select) as {
 			execute(): Promise<unknown>;
 			prepare(): { query: string; bindings: unknown };
+			entry?: unknown;
 		};
+		const resultSchema = query.entry;
+		const materializer: OverlayMaterializer<unknown> | undefined =
+			resultSchema instanceof ModelType
+				? {
+						create: (row) => {
+							const model = hydrateModelRow(
+								resultSchema.model,
+								resultSchema.tb,
+								resultSchema.usesModelBase,
+								row,
+							);
+							bindModelContexts(model, resultSchema, db);
+							return model;
+						},
+						update: (row, data) => {
+							if (!(row instanceof resultSchema.model)) return undefined;
+							const record = Object.fromEntries(
+								Object.entries(row).filter(
+									([, value]) => typeof value !== "function",
+								),
+							);
+							const model = hydrateModelRow(
+								resultSchema.model,
+								resultSchema.tb,
+								resultSchema.usesModelBase,
+								{
+									...record,
+									...data,
+									id: (row as { id: unknown }).id,
+								},
+							);
+							bindModelContexts(model, resultSchema, db);
+							return model;
+						},
+					}
+				: undefined;
 		// A query that is a plain filter can be checked against records on the
 		// client, which lets a local write enter or leave the result at once.
 		const filter = build
@@ -280,9 +322,25 @@ export class Store<O extends StoreOrm> {
 				apply: (rows, direct) => {
 					const rowKey = (row: unknown) => String((row as { id: RecordId }).id);
 					const ops = this.#outbox.forTable(tb);
-					if (direct) return applyOverlay(rows, ops, rowKey, true);
-					if (!filter) return applyOverlay(rows, ops, rowKey, false);
-					return applyOverlay(
+					if (direct)
+						return applyOverlayWithMaterializer(
+							rows,
+							ops,
+							rowKey,
+							true,
+							undefined,
+							materializer,
+						);
+					if (!filter)
+						return applyOverlayWithMaterializer(
+							rows,
+							ops,
+							rowKey,
+							false,
+							undefined,
+							materializer,
+						);
+					return applyOverlayWithMaterializer(
 						rows,
 						ops,
 						rowKey,
@@ -290,6 +348,7 @@ export class Store<O extends StoreOrm> {
 							!filter.ordered &&
 							matchesWhere(filter.where, row, { partial: true }) === true,
 						(row) => matchesWhere(filter.where, row) !== false,
+						materializer,
 					);
 				},
 				subscribe: this.#outbox.subscribe,

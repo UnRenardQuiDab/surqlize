@@ -1,10 +1,8 @@
-import { OrmError } from "../error";
 import { type AbstractType, ObjectType } from "../types";
 import {
-	assertNoModelHelperFields,
+	hydrateModelRow,
 	MODEL_SCHEMA,
 	type ModelSchemaMetadata,
-	usesModelBase,
 } from "./model";
 import type { ModelClass } from "../utils/model";
 
@@ -36,34 +34,11 @@ export class ModelType<
 	/** Parse a row, then hydrate it into an instance of the linked class. */
 	parse(value: unknown): this["infer"] {
 		const row = super.parse(value);
-		if (this.usesModelBase) {
-			assertNoModelHelperFields(row as Record<string, unknown>, this.tb);
-		}
-
-		const hydrate = (
-			this.model as ModelClass & {
-				hydrate?: (value: unknown) => unknown;
-			}
-		).hydrate;
-		if (typeof hydrate === "function") {
-			const instance = Reflect.apply(hydrate, this.model, [row]);
-			if (
-				typeof instance !== "object" ||
-				instance === null ||
-				!(instance instanceof this.model)
-			) {
-				throw new OrmError(
-					`The hydrate() method for table "${this.tb}" must return an instance of its attached model class`,
-				);
-			}
-			if (this.usesModelBase) {
-				assertNoModelHelperFields(
-					instance as Record<string, unknown>,
-					this.tb,
-				);
-			}
-			return instance as this["infer"];
-		}
-		return Object.assign(Object.create(this.model.prototype), row);
+		return hydrateModelRow(
+			this.model,
+			this.tb,
+			this.usesModelBase,
+			row,
+		) as this["infer"];
 	}
 }

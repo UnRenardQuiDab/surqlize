@@ -23,7 +23,7 @@ import {
 	UnionType as UnionTypeClass,
 } from "../types";
 import type { WorkableContext } from "../utils";
-import { registerModelClass } from "../utils/model";
+import { registerModelClass, type ModelClass } from "../utils/model";
 import type { Orm } from "./orm";
 import type { ModelType } from "./model-type";
 
@@ -570,6 +570,43 @@ export function assertNoModelHelperFields(
 			);
 		}
 	}
+}
+
+/** Hydrate a complete or optimistic row using the attached model's contract. */
+export function hydrateModelRow(
+	model: ModelClass,
+	tb: string,
+	usesBase: boolean,
+	value: unknown,
+): object {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		throw new OrmError(
+			`Cannot hydrate model for table "${tb}": expected a row object`,
+		);
+	}
+	const row = value as Record<string, unknown>;
+	if (usesBase) assertNoModelHelperFields(row, tb);
+
+	const hydrate = (
+		model as ModelClass & { hydrate?: (value: unknown) => unknown }
+	).hydrate;
+	if (typeof hydrate === "function") {
+		const instance = Reflect.apply(hydrate, model, [row]);
+		if (
+			typeof instance !== "object" ||
+			instance === null ||
+			!(instance instanceof model)
+		) {
+			throw new OrmError(
+				`The hydrate() method for table "${tb}" must return an instance of its attached model class`,
+			);
+		}
+		if (usesBase) {
+			assertNoModelHelperFields(instance as Record<string, unknown>, tb);
+		}
+		return instance;
+	}
+	return Object.assign(Object.create(model.prototype), row);
 }
 
 /** Create a per-ORM subclass with the existing model statics bound to `orm`. */
