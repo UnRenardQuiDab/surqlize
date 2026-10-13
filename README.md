@@ -313,7 +313,7 @@ class User extends user.model() {
 
   static findByEmail(email: string) {
     return this.$orm.select("user")
-      .where((row) => row.email.eq(email))
+      .where({ email })
       .then.val();
   }
 }
