@@ -88,7 +88,12 @@ function patch<T>(row: T, data: Record<string, unknown>): T {
 		data,
 		hasId ? { id: (row as { id?: unknown }).id } : {},
 	) as T;
-	if (typeof row === "object" && row !== null && typeof copy === "object") {
+	if (
+		typeof row === "object" &&
+		row !== null &&
+		typeof copy === "object" &&
+		copy !== null
+	) {
 		copyModelContext(row, copy);
 	}
 	return copy;

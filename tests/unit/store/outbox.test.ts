@@ -3,18 +3,18 @@ import {
 	Duration,
 	RecordId,
 	ServerError,
-	Uuid,
 	type SurrealSession,
+	Uuid,
 } from "surrealdb";
 import {
 	applyOverlay,
 	createStore,
+	type HydrationInput,
 	memoryStorage,
+	type OutboxOp,
 	orm,
 	t,
 	table,
-	type HydrationInput,
-	type OutboxOp,
 } from "../../../src";
 import { decode, encode } from "../../../src/store/codec";
 import { Outbox } from "../../../src/store/outbox";
@@ -232,7 +232,9 @@ describe("Store model overlays", () => {
 		};
 		const store = createStore(db, { connection, idleMs: 0 });
 		const query = store.query("optimistic_task");
-		const fetchedQuery = store.query("optimistic_task", (q) => q.fetch("profile"));
+		const fetchedQuery = store.query("optimistic_task", (q) =>
+			q.fetch("profile"),
+		);
 		const unsubscribe = query.subscribe(() => {});
 		const unsubscribeFetched = fetchedQuery.subscribe(() => {});
 		await tick();

@@ -662,14 +662,7 @@ export class SelectQuery<
 		return this.derive((next) => {
 			next._fetch = fields;
 			if (resolved) next._fetchResolvedType = resolved;
-		}) as unknown as SelectQuery<
-			O,
-			C,
-			T,
-			FetchedSchema<O, E, P>,
-			Only,
-			Source
-		>;
+		}) as unknown as SelectQuery<O, C, T, FetchedSchema<O, E, P>, Only, Source>;
 	}
 
 	timeout(duration: string): this {

@@ -23,7 +23,7 @@ import {
 	UnionType as UnionTypeClass,
 } from "../types";
 import type { WorkableContext } from "../utils";
-import { registerModelClass, type ModelClass } from "../utils/model";
+import { type ModelClass, registerModelClass } from "../utils/model";
 import type { Orm } from "./orm";
 import type { ModelType } from "./model-type";
 
@@ -45,10 +45,6 @@ export type ModelSchemaMetadata = {
 	model: ModelClass;
 	usesModelBase: boolean;
 };
-
-/** Any class accepted by the legacy `table(tb, fields, Class)` overload. */
-// biome-ignore lint/suspicious/noExplicitAny: model constructors may take any arguments
-export type ModelClass = abstract new (...args: any[]) => object;
 
 /** The shape of a record accepted by a model hydration factory. */
 type MaterializedRecord<Tb> = {
